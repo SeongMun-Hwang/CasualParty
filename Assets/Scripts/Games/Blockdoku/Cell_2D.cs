@@ -19,19 +19,19 @@ public class Cell_2D : BaseCell
         animator = GetComponent<Animator>();
     }
 
-    public void TriggerClearAnimation()
+    public void ClearLogically()
     {
         IsClearing = true;
+        base.SetEmpty(); // Mark as logically empty immediately
+        BlockColor = Color.clear;
+    }
+
+    public void TriggerClearAnimation()
+    {
         if (animator != null)
         {
             animator.SetTrigger("Clear");
         }
-        
-        // 데이터 상으로는 즉시 비어있는 것으로 간주할지, 
-        // 아니면 애니메이션 종료 후 비우게 할지에 따라 IsEmpty 설정 시점이 달라집니다.
-        // 기존 로직(IsEmpty = true)을 유지하여 그리드 판정 시 혼선이 없게 합니다.
-        base.SetEmpty(); // BaseCell의 IsEmpty = true만 설정 (스프라이트 미교체)
-        BlockColor = Color.clear;
     }
 
     public override void Initialize(int row, int col, bool isEmpty)

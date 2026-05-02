@@ -335,7 +335,12 @@ public class GridManager_2D : MonoBehaviour
         }
 
         HashSet<Cell_2D> cellsToClear = new HashSet<Cell_2D>();
-        foreach (var pos in completedPositions) cellsToClear.Add(grid[pos.y, pos.x]);
+        foreach (var pos in completedPositions)
+        {
+            Cell_2D cell = grid[pos.y, pos.x];
+            cellsToClear.Add(cell);
+            cell.ClearLogically(); // Mark logically empty IMMEDIATELY
+        }
 
         List<Color> clearColors = cellsToClear.Select(c => c.BlockColor).Distinct().ToList();
         int linesClearedCount = CalculateLinesClearedCount(currentOccupied);

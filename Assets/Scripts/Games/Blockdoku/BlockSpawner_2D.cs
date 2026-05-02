@@ -285,14 +285,12 @@ public class BlockSpawner_2D : MonoBehaviour
         {
             SpawnBlocks();
         }
-        else
+
+        if (GameManager_2D.Instance != null)
         {
-            if (GameManager_2D.Instance != null)
-            {
-                GameManager_2D.Instance.SaveGameData();
-            }
-            CheckForGameOver();
+            GameManager_2D.Instance.SaveGameData();
         }
+        CheckForGameOver();
     }
 
     public void CheckForGameOver()
