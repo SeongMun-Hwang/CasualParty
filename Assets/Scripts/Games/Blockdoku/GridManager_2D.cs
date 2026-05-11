@@ -337,12 +337,15 @@ public class GridManager_2D : MonoBehaviour
         HashSet<Cell_2D> cellsToClear = new HashSet<Cell_2D>();
         foreach (var pos in completedPositions)
         {
-            Cell_2D cell = grid[pos.y, pos.x];
-            cellsToClear.Add(cell);
-            cell.ClearLogically(); // Mark logically empty IMMEDIATELY
+            cellsToClear.Add(grid[pos.y, pos.x]);
         }
 
         List<Color> clearColors = cellsToClear.Select(c => c.BlockColor).Distinct().ToList();
+        
+        foreach (var cell in cellsToClear)
+        {
+            cell.ClearLogically(); // Mark logically empty IMMEDIATELY
+        }
         int linesClearedCount = CalculateLinesClearedCount(currentOccupied);
         
         int totalOccupiedBefore = 0;
@@ -447,7 +450,9 @@ public class GridManager_2D : MonoBehaviour
         RectTransform rt = item.rt;
         Image img = item.img;
 
-        if (img != null) img.color = color;
+        // Ensure we don't use Color.clear which results in black trails
+        Color effectColor = (color == Color.clear) ? Color.white : color;
+        if (img != null) img.color = effectColor;
         rt.localPosition = path[0];
 
         float totalDist = 0f;
@@ -468,7 +473,7 @@ public class GridManager_2D : MonoBehaviour
                 if (distanceMoved >= ghostStepDistance)
                 {
                     int segments = Mathf.FloorToInt(distanceMoved / ghostStepDistance);
-                    for (int j = 1; j <= segments; j++) CreateTrailGhost(Vector2.Lerp(lastGhostPos, currentPos, (float)j / segments), color);
+                    for (int j = 1; j <= segments; j++) CreateTrailGhost(Vector2.Lerp(lastGhostPos, currentPos, (float)j / segments), effectColor);
                     lastGhostPos = currentPos;
                 }
             }));
@@ -487,7 +492,7 @@ public class GridManager_2D : MonoBehaviour
         rt.localPosition = pos;
         if (img != null) 
         {
-            Color c = color;
+            Color c = (color == Color.clear) ? Color.white : color;
             c.a = 1f;
             img.color = c;
             img.DOFade(0f, trailExist);
@@ -505,7 +510,7 @@ public class GridManager_2D : MonoBehaviour
                 if (!grid[r, c].IsEmpty)
                 {
                     Color col = grid[r, c].BlockColor;
-                    if (!_tempColorList.Contains(col)) _tempColorList.Add(col);
+                    if (col != Color.clear && !_tempColorList.Contains(col)) _tempColorList.Add(col);
                 }
             }
         }
