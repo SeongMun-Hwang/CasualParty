@@ -110,7 +110,7 @@ public class BlockSpawner_2D : MonoBehaviour
     };
 
     private List<BlockArray> _cachedAllPossibleBlocks;
-    private List<BlockArray> AllPossibleBlocks
+    public List<BlockArray> AllPossibleBlocks
     {
         get
         {

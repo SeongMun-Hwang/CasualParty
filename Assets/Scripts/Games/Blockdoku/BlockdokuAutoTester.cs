@@ -19,8 +19,9 @@ public class BlockdokuAutoTester : MonoBehaviour
     public bool isTesting = false;
     public int currentRun = 0;
     public int lastScore = 0;
-    public List<int> scoreHistory = new List<int>();
     public float averageScore = 0;
+    private long totalScoreSum = 0;
+    private Dictionary<string, int> remainingBlockCounts = new Dictionary<string, int>();
 
     private Coroutine testCoroutine;
 
@@ -46,8 +47,21 @@ public class BlockdokuAutoTester : MonoBehaviour
         if (isTesting) return;
         isTesting = true;
         currentRun = 0;
-        scoreHistory.Clear();
+        totalScoreSum = 0;
         averageScore = 0;
+
+        remainingBlockCounts.Clear();
+        if (BlockSpawner_2D.Instance != null)
+        {
+            foreach (var block in BlockSpawner_2D.Instance.AllPossibleBlocks)
+            {
+                if (block != null && !remainingBlockCounts.ContainsKey(block.name))
+                {
+                    remainingBlockCounts[block.name] = 0;
+                }
+            }
+        }
+
         if (AdManager.Instance != null) AdManager.Instance.EnableAds = false;
         testCoroutine = StartCoroutine(AutoPlayRoutine());
     }
@@ -80,18 +94,24 @@ public class BlockdokuAutoTester : MonoBehaviour
                 sw.WriteLine("");
                 sw.WriteLine($"--- Test Session Exported at: {System.DateTime.Now:yyyy-MM-dd HH:mm:ss} ---");
                 
-                if (!fileExists)
+                sw.WriteLine($"TOTAL RUNS,{currentRun}");
+                sw.WriteLine($"AVERAGE SCORE,{averageScore:F1}");
+                sw.WriteLine("");
+
+                // Block Remaining Analysis
+                if (remainingBlockCounts.Count > 0)
                 {
-                    sw.WriteLine("Run,Score");
+                    sw.WriteLine("Remaining Blocks Frequency Analysis:");
+                    
+                    // Headers: Block Names
+                    var sortedKeys = remainingBlockCounts.Keys.OrderBy(k => k).ToList();
+                    sw.WriteLine(string.Join(",", sortedKeys));
+                    
+                    // Data: Counts
+                    var counts = sortedKeys.Select(k => remainingBlockCounts[k].ToString()).ToList();
+                    sw.WriteLine(string.Join(",", counts));
                 }
 
-                for (int i = 0; i < scoreHistory.Count; i++)
-                {
-                    sw.WriteLine($"{i + 1},{scoreHistory[i]}");
-                }
-                
-                sw.WriteLine($"SESSION AVERAGE,{averageScore:F1}");
-                sw.WriteLine($"SESSION RUNS,{scoreHistory.Count}");
                 sw.WriteLine("------------------------------------------");
             }
 
@@ -248,10 +268,36 @@ public class BlockdokuAutoTester : MonoBehaviour
         if (GameManager_2D.Instance != null)
         {
             int finalScore = GameManager_2D.Instance.GetScore();
-            scoreHistory.Add(finalScore);
             lastScore = finalScore;
+            totalScoreSum += finalScore;
             currentRun++;
-            averageScore = (float)scoreHistory.Average();
+            averageScore = (float)totalScoreSum / currentRun;
+
+            // Track remaining blocks
+            if (BlockSpawner_2D.Instance != null)
+            {
+                var remaining = BlockSpawner_2D.Instance.GetSpawnedBlocks();
+                foreach (var blockGO in remaining)
+                {
+                    if (blockGO != null)
+                    {
+                        Block_2D block = blockGO.GetComponent<Block_2D>();
+                        if (block != null && block.BlockData != null)
+                        {
+                            string blockName = block.BlockData.name;
+                            if (remainingBlockCounts.ContainsKey(blockName))
+                            {
+                                remainingBlockCounts[blockName]++;
+                            }
+                            else
+                            {
+                                remainingBlockCounts[blockName] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+
             Debug.Log($"Run {currentRun} Finished. Score: {finalScore} | Avg: {averageScore:F1}");
         }
     }
