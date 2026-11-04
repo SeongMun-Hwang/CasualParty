@@ -4,8 +4,7 @@ public enum MinigameType
 {
     Blockdoku,
     TenSum,
-    MineSweeper,
-    _2048
+    MineSweeper
 }
 
 public static class AdEventBus

@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="8" result="Passed" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-11-04 07:17:12Z" end-time="2026-11-04 07:17:14Z" duration="1.79165">
+  <test-suite type="TestSuite" id="1000" name="CasualPartyVerification" fullname="CasualPartyVerification" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-11-04 07:17:12Z" end-time="2026-11-04 07:17:14Z" duration="1.791650" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1010" name="Assembly-CSharp-Editor.dll" fullname="C:/Users/SeongMun/AppData/Local/Temp/CasualPartyVerification/Project/Library/ScriptAssemblies/Assembly-CSharp-Editor.dll" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-11-04 07:17:13Z" end-time="2026-11-04 07:17:14Z" duration="1.698299" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="43924" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestFixture" id="1001" name="CasualPartyRegressionTests" fullname="CasualPartyRegressionTests" classname="CasualPartyRegressionTests" runstate="Runnable" testcasecount="8" result="Passed" start-time="2026-11-04 07:17:13Z" end-time="2026-11-04 07:17:14Z" duration="1.696395" total="8" passed="8" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-case id="1003" name="AdCountersAreIndependentBetweenGames" fullname="CasualPartyRegressionTests.AdCountersAreIndependentBetweenGames" methodname="AdCountersAreIndependentBetweenGames" classname="CasualPartyRegressionTests" runstate="Runnable" seed="561039723" result="Passed" start-time="2026-11-04 07:16:58Z" end-time="2026-11-04 07:16:58Z" duration="0.013593" asserts="0">
+          <properties />
+        </test-case>
+        <test-case id="1002" name="AdThresholdKeepsDueCountUntilAdIsConsumed" fullname="CasualPartyRegressionTests.AdThresholdKeepsDueCountUntilAdIsConsumed" methodname="AdThresholdKeepsDueCountUntilAdIsConsumed" classname="CasualPartyRegressionTests" runstate="Runnable" seed="1200975637" result="Passed" start-time="2026-11-04 07:16:58Z" end-time="2026-11-04 07:16:58Z" duration="0.000387" asserts="0">
+          <properties />
+        </test-case>
+        <test-case id="1007" name="BlockdokuFullClearRequiresAnEmptyBoard" fullname="CasualPartyRegressionTests.BlockdokuFullClearRequiresAnEmptyBoard" methodname="BlockdokuFullClearRequiresAnEmptyBoard" classname="CasualPartyRegressionTests" runstate="Runnable" seed="1305262139" result="Passed" start-time="2026-11-04 07:16:58Z" end-time="2026-11-04 07:17:03Z" duration="5.377745" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+          </properties>
+          <output><![CDATA[GameManager_2D Start called.
+BoardDataPath exists: False
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+GameManager_2D StartGame called.
+Attempting to remove game data. BoardDataPath exists before: False
+BoardDataPath did not exist, no need to delete.
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+2D Game data saved!
+GameManager_2D Start called.
+BoardDataPath exists: False
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+GameManager_2D StartGame called.
+Attempting to remove game data. BoardDataPath exists before: False
+BoardDataPath did not exist, no need to delete.
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+2D Game data saved!
+]]></output>
+        </test-case>
+        <test-case id="1008" name="BlockdokuSavesNextHandBeforeClearAnimationCompletes" fullname="CasualPartyRegressionTests.BlockdokuSavesNextHandBeforeClearAnimationCompletes" methodname="BlockdokuSavesNextHandBeforeClearAnimationCompletes" classname="CasualPartyRegressionTests" runstate="Runnable" seed="483867942" result="Passed" start-time="2026-11-04 07:17:03Z" end-time="2026-11-04 07:17:09Z" duration="5.349650" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+          </properties>
+          <output><![CDATA[GameManager_2D Start called.
+BoardDataPath exists: False
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+GameManager_2D StartGame called.
+Attempting to remove game data. BoardDataPath exists before: False
+BoardDataPath did not exist, no need to delete.
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+2D Game data saved!
+2D Game data saved!
+2D Game data saved!
+GameManager_2D Start called.
+BoardDataPath exists: True
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+2D Game data loaded!
+]]></output>
+        </test-case>
+        <test-case id="1009" name="RefreshButtonRecordsOnlyOneAdBoundaryWhileWaiting" fullname="CasualPartyRegressionTests.RefreshButtonRecordsOnlyOneAdBoundaryWhileWaiting" methodname="RefreshButtonRecordsOnlyOneAdBoundaryWhileWaiting" classname="CasualPartyRegressionTests" runstate="Runnable" seed="1829815263" result="Passed" start-time="2026-11-04 07:17:09Z" end-time="2026-11-04 07:17:14Z" duration="5.455471" asserts="0">
+          <properties>
+            <property name="_JOINTYPE" value="UnityCombinatorial" />
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[GameManager_2D Start called.
+BoardDataPath exists: False
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+GameManager_2D StartGame called.
+Attempting to remove game data. BoardDataPath exists before: False
+BoardDataPath did not exist, no need to delete.
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+2D Game data saved!
+Attempting to remove game data. BoardDataPath exists before: True
+2D Board Save file deleted. BoardDataPath exists after: False
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+GameManager_2D Start called.
+BoardDataPath exists: False
+GridManager is null in Start: False
+BlockSpawner is null in Start: False
+GameManager_2D StartGame called.
+Attempting to remove game data. BoardDataPath exists before: False
+BoardDataPath did not exist, no need to delete.
+Attempting to remove game data. BlockDataPath exists before: False
+BlockDataPath did not exist, no need to delete.
+2D Game data saved!
+]]></output>
+        </test-case>
+        <test-case id="1005" name="RetiredGameIsNotInBuildOrTitleMenu" fullname="CasualPartyRegressionTests.RetiredGameIsNotInBuildOrTitleMenu" methodname="RetiredGameIsNotInBuildOrTitleMenu" classname="CasualPartyRegressionTests" runstate="Runnable" seed="600152972" result="Passed" start-time="2026-11-04 07:17:14Z" end-time="2026-11-04 07:17:14Z" duration="0.002674" asserts="0">
+          <properties>
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+        </test-case>
+        <test-case id="1006" name="SaveReplacementAndMalformedDataRecovery" fullname="CasualPartyRegressionTests.SaveReplacementAndMalformedDataRecovery" methodname="SaveReplacementAndMalformedDataRecovery" classname="CasualPartyRegressionTests" runstate="Runnable" seed="1381228525" result="Passed" start-time="2026-11-04 07:17:14Z" end-time="2026-11-04 07:17:14Z" duration="0.008119" asserts="0">
+          <properties>
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[Could not load test.json: JSON parse error: Missing a name for object member.
+]]></output>
+        </test-case>
+        <test-case id="1004" name="ScoreOutboxPreservesBestScoresAndAccountOwnership" fullname="CasualPartyRegressionTests.ScoreOutboxPreservesBestScoresAndAccountOwnership" methodname="ScoreOutboxPreservesBestScoresAndAccountOwnership" classname="CasualPartyRegressionTests" runstate="Runnable" seed="136488952" result="Passed" start-time="2026-11-04 07:17:14Z" end-time="2026-11-04 07:17:14Z" duration="0.001364" asserts="0">
+          <properties>
+            <property name="retryIteration" value="0" />
+            <property name="repeatIteration" value="0" />
+          </properties>
+          <output><![CDATA[Saving results to: C:/Users/SeongMun/AppData/LocalLow/DefaultCompany/CasualPartyVerification\TestResults.xml
+]]></output>
+        </test-case>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

@@ -1,48 +1,66 @@
 using GoogleMobileAds.Api;
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class AdManager : MonoBehaviour
 {
     [SerializeField] private bool _enableAds = true;
+    [SerializeField] private string _adUnitId;
+    [SerializeField] private string _bannerAdUnitId;
+    [SerializeField, Min(1)] private int blockdokuFrequency = 1;
+    [SerializeField, Min(1)] private int tenSumFrequency = 3;
+    [SerializeField, Min(1)] private int mineSweeperFrequency = 2;
+
+    public static AdManager Instance { get; private set; }
+    public bool IsShowingAd { get; private set; }
+    private readonly AdFrequency frequency = new AdFrequency();
+    private InterstitialAd interstitial;
+    private BannerView banner;
+    private bool initialized;
+    private bool initializing;
+    private bool loading;
+    private int loadGeneration;
+    private int retryAttempt;
+    private Coroutine retryCoroutine;
+    private Action completion;
+    private MinigameType showingGame;
+    private bool hasShowingGame;
+
     public bool EnableAds
     {
         get => _enableAds;
         set
         {
+            if (_enableAds == value) return;
             _enableAds = value;
-            if (!_enableAds) HideBanner();
-            else ShowBanner();
+            if (!value)
+            {
+                HideBanner();
+                CancelRetry();
+                loadGeneration++;
+                loading = false;
+                if (!IsShowingAd) { interstitial?.Destroy(); interstitial = null; }
+            }
+            else
+            {
+                InitializeAds();
+                if (initialized) { LoadInterstitialAd(); LoadBannerAd(); }
+            }
         }
     }
-    [SerializeField] private string _adUnitId;
-    [SerializeField] private string _bannerAdUnitId;
-    private InterstitialAd _interstitialAd;
-    private BannerView _bannerView;
-
-    public static AdManager Instance { get; private set; }
-
-    private Action _onAdClosedCallback;
-    private Dictionary<MinigameType, int> _playCounts = new Dictionary<MinigameType, int>();
 
     private void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-            DontDestroyOnLoad(gameObject);
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
     }
 
     private void OnEnable()
     {
+        if (Instance != this) return;
         AdEventBus.OnGamePlayEnded += HandleGamePlayEnded;
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
@@ -53,253 +71,173 @@ public class AdManager : MonoBehaviour
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
+    private void OnDestroy()
+    {
+        if (Instance != this) return;
+        loadGeneration++;
+        interstitial?.Destroy();
+        banner?.Destroy();
+        Instance = null;
+    }
+
+    private void Start() => InitializeAds();
+
+    private void InitializeAds()
+    {
+        if (!_enableAds || initialized || initializing) return;
+        initializing = true;
+        MobileAds.RaiseAdEventsOnUnityMainThread = true;
+        MobileAds.Initialize(_ =>
+        {
+            if (this == null) return;
+            initializing = false;
+            initialized = true;
+            if (!_enableAds) return;
+            LoadInterstitialAd();
+            LoadBannerAd();
+        });
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        StartCoroutine(RecreateBannerCoroutine());
+        if (initialized && _enableAds) StartCoroutine(RefreshBanner());
     }
-    private IEnumerator RecreateBannerCoroutine()
+
+    private IEnumerator RefreshBanner()
     {
-        yield return null; // UI Layout 기다림
-
-        RecreateBanner();
-    }
-    private void RecreateBanner()
-    {
-        if (_bannerView != null)
-        {
-            _bannerView.Destroy();
-            _bannerView = null;
-        }
-
-        if (!_enableAds) return;
-
-        Debug.Log("Recreating banner...");
-
-        AdSize adaptiveSize = AdSize.GetPortraitAnchoredAdaptiveBannerAdSizeWithWidth(AdSize.FullWidth);
-        _bannerView = new BannerView(_bannerAdUnitId, adaptiveSize, AdPosition.Bottom);
-
-        var adRequest = new AdRequest();
-        _bannerView.LoadAd(adRequest);
-    }
-    private IEnumerator ReShowBannerCoroutine()
-    {
-        // UI 레이아웃이 확정될 때까지 한 프레임 대기
         yield return null;
-
-        if (_bannerView != null && _enableAds)
-        {
-            Debug.Log("Re-showing banner after scene load with delay");
-            _bannerView.Hide();
-            _bannerView.Show();
-        }
-    }
-
-    public void Start()
-    {
-        if (!_enableAds) return;
-
-        MobileAds.RaiseAdEventsOnUnityMainThread = true;
-
-        MobileAds.Initialize((InitializationStatus initStatus) =>
-        {
-            LoadInterstitialAd();
-            LoadBannerAd(); // ✅ 여기서는 “생성만”
-        });
+        LoadBannerAd();
     }
 
     public void LoadBannerAd()
     {
-        RecreateBanner();
+        if (!initialized || !_enableAds || string.IsNullOrWhiteSpace(_bannerAdUnitId)) return;
+        banner?.Destroy();
+        var size = AdSize.GetPortraitAnchoredAdaptiveBannerAdSizeWithWidth(AdSize.FullWidth);
+        banner = new BannerView(_bannerAdUnitId, size, AdPosition.Bottom);
+        banner.LoadAd(new AdRequest());
     }
+
+    public void HideBanner() => banner?.Hide();
+    public void ShowBanner() { if (_enableAds) banner?.Show(); }
 
     public void SetBannerPosition(RectTransform placeholder)
     {
-        if (_bannerView == null || placeholder == null || !_enableAds) return;
-
-        Vector3[] corners = new Vector3[4];
+        if (banner == null || placeholder == null || !_enableAds) return;
+        var corners = new Vector3[4];
         placeholder.GetWorldCorners(corners);
-
-        float screenHeight = Screen.height;
-        Vector2 screenPos = corners[1];
-
-        int x = Mathf.RoundToInt(screenPos.x);
-        int y = Mathf.RoundToInt(screenHeight - screenPos.y);
-
-        _bannerView.SetPosition(x, y);
+        banner.SetPosition(Mathf.RoundToInt(corners[1].x), Mathf.RoundToInt(Screen.height - corners[1].y));
     }
 
-    public void HideBanner()
+    private int Threshold(MinigameType game)
     {
-        if (_bannerView != null)
+        switch (game)
         {
-            _bannerView.Hide();
-            Debug.Log("Banner ad hidden.");
+            case MinigameType.Blockdoku: return Mathf.Max(1, blockdokuFrequency);
+            case MinigameType.TenSum: return Mathf.Max(1, tenSumFrequency);
+            default: return Mathf.Max(1, mineSweeperFrequency);
         }
     }
 
-    public void ShowBanner()
+    private void HandleGamePlayEnded(MinigameType game, Action onComplete)
     {
-        if (_bannerView != null && _enableAds)
+        // A repeated click must not replace the callback of the ad already on screen.
+        if (IsShowingAd) return;
+        if (!_enableAds) { onComplete?.Invoke(); return; }
+        bool due = frequency.Record(game, Threshold(game));
+        if (due && interstitial != null && interstitial.CanShowAd())
         {
-            _bannerView.Show();
-            Debug.Log("Banner ad shown.");
-        }
-    }
-
-    // 좌표 변환을 돕는 유틸리티 클래스 (내부 정의 혹은 외부 사용 가능)
-    private static class RuntimeCanvasUtils
-    {
-        public static Vector2 WorldToScreenPoint(Vector3 worldPoint)
-        {
-            return worldPoint; // WorldCorners는 이미 스크린 좌표(Overlay 기준)와 일치함
-        }
-    }
-
-    private void HandleGamePlayEnded(MinigameType gameType, Action onComplete)
-    {
-        if (!_playCounts.ContainsKey(gameType))
-        {
-            _playCounts[gameType] = 0;
-        }
-
-        _playCounts[gameType]++;
-        Debug.Log($"[AdManager] GamePlayEnded for {gameType}. Current count: {_playCounts[gameType]}");
-
-        // If ad is null and ads are enabled, try to load it now
-        if (_enableAds && _interstitialAd == null)
-        {
-            LoadInterstitialAd();
-        }
-
-        bool shouldShowAd = false;
-
-        switch (gameType)
-        {
-            case MinigameType.Blockdoku:
-            case MinigameType._2048:
-                shouldShowAd = true;
-                break;
-            case MinigameType.TenSum:
-                if (_playCounts[gameType] >= 3)
-                {
-                    shouldShowAd = true;
-                }
-                break;
-            case MinigameType.MineSweeper:
-                if (_playCounts[gameType] >= 2)
-                {
-                    shouldShowAd = true;
-                }
-                break;
-        }
-
-        if (_enableAds && shouldShowAd && _interstitialAd != null && _interstitialAd.CanShowAd())
-        {
-            Debug.Log($"[AdManager] Condition met. Showing ad for {gameType}. Resetting count.");
-            _playCounts[gameType] = 0;
-            _onAdClosedCallback = onComplete;
+            showingGame = game;
+            hasShowingGame = true;
+            frequency.Consume(game);
+            completion = onComplete;
             ShowInterstitialAd();
+            return;
         }
-        else
-        {
-            if (shouldShowAd)
-            {
-                if (!_enableAds) Debug.Log("[AdManager] Ads are disabled.");
-                else if (_interstitialAd == null) Debug.Log("[AdManager] Interstitial ad is null (still loading?).");
-                else if (!_interstitialAd.CanShowAd()) Debug.Log("[AdManager] Interstitial ad is not ready yet.");
-            }
-            else
-            {
-                Debug.Log($"[AdManager] shouldShowAd is false for {gameType} (count: {_playCounts[gameType]})");
-            }
-            onComplete?.Invoke();
-        }
-    }
 
-    private int _retryAttempt = 0;
+        // Keep a due count if offline/not loaded. Show only at a future game boundary,
+        // never asynchronously in the middle of a newly started game.
+        LoadInterstitialAd();
+        onComplete?.Invoke();
+    }
 
     public void LoadInterstitialAd()
     {
-        if (_interstitialAd != null)
+        if (!initialized || !_enableAds || loading || IsShowingAd || retryCoroutine != null ||
+            string.IsNullOrWhiteSpace(_adUnitId)) return;
+        if (interstitial != null && interstitial.CanShowAd()) return;
+        interstitial?.Destroy();
+        interstitial = null;
+        loading = true;
+        int generation = ++loadGeneration;
+        InterstitialAd.Load(_adUnitId, new AdRequest(), (ad, error) =>
         {
-            _interstitialAd.Destroy();
-            _interstitialAd = null;
-        }
-
-        if (!_enableAds) return;
-
-        Debug.Log("[AdManager] Loading Interstitial Ad...");
-        var adRequest = new AdRequest();
-
-        InterstitialAd.Load(_adUnitId, adRequest,
-            (InterstitialAd ad, LoadAdError error) =>
+            if (this == null || generation != loadGeneration || !_enableAds)
             {
-                if (error != null || ad == null)
-                {
-                    _retryAttempt++;
-                    double retryDelay = Math.Pow(2, Math.Min(6, _retryAttempt)); // 2, 4, 8, 16, 32, 64 seconds
-                    Debug.LogError($"[AdManager] Interstitial ad failed to load: {error}. Retrying in {retryDelay}s...");
-                    StartCoroutine(RetryLoadInterstitialAd(retryDelay));
-                    return;
-                }
-
-                Debug.Log("[AdManager] Interstitial ad loaded successfully.");
-                _interstitialAd = ad;
-                _retryAttempt = 0; // Reset retry count on success
-
-                // 광고가 닫혔을 때
-                _interstitialAd.OnAdFullScreenContentClosed += () =>
-                {
-                    Debug.Log("[AdManager] Interstitial ad closed by user.");
-                    ExecuteOnAdClosed();
-                };
-
-                // 광고 표시 실패 시
-                _interstitialAd.OnAdFullScreenContentFailed += (AdError err) =>
-                {
-                    Debug.LogError("[AdManager] Interstitial ad failed to show: " + err);
-                    ExecuteOnAdClosed();
-                };
-            });
+                ad?.Destroy();
+                return;
+            }
+            loading = false;
+            if (error != null || ad == null)
+            {
+                ad?.Destroy();
+                Debug.LogWarning($"[Ads] Load failed: {error}");
+                retryAttempt++;
+                retryCoroutine = StartCoroutine(RetryLoad(Math.Pow(2, Math.Min(6, retryAttempt))));
+                return;
+            }
+            interstitial = ad;
+            retryAttempt = 0;
+            ad.OnAdFullScreenContentClosed += () => FinishAd(ad, false);
+            ad.OnAdFullScreenContentFailed += errorOnShow =>
+            {
+                Debug.LogWarning($"[Ads] Show failed: {errorOnShow}");
+                FinishAd(ad, true);
+            };
+        });
     }
 
-    private IEnumerator RetryLoadInterstitialAd(double delay)
+    private IEnumerator RetryLoad(double seconds)
     {
-        yield return new WaitForSeconds((float)delay);
-        if (_interstitialAd == null && _enableAds)
-        {
-            LoadInterstitialAd();
-        }
-    }
-
-    private void ExecuteOnAdClosed()
-    {
-        Debug.Log("[AdManager] ExecuteOnAdClosed called.");
-        // 콜백 실행 (씬 전환 등)
-        Action callback = _onAdClosedCallback;
-        _onAdClosedCallback = null;
-        
-        if (callback != null)
-        {
-            Debug.Log("[AdManager] Invoking callback (Scene Load).");
-            callback.Invoke();
-        }
-
-        // 다음 광고 미리 로드
+        yield return new WaitForSecondsRealtime((float)seconds);
+        retryCoroutine = null;
         LoadInterstitialAd();
+    }
+
+    private void CancelRetry()
+    {
+        if (retryCoroutine != null) StopCoroutine(retryCoroutine);
+        retryCoroutine = null;
     }
 
     public void ShowInterstitialAd()
     {
-        if (_interstitialAd != null && _interstitialAd.CanShowAd())
+        if (IsShowingAd) return;
+        if (!_enableAds || interstitial == null || !interstitial.CanShowAd())
         {
-            Debug.Log("Showing interstitial ad.");
-            _interstitialAd.Show();
+            if (hasShowingGame) frequency.KeepDue(showingGame, Threshold(showingGame));
+            hasShowingGame = false;
+            var callback = completion;
+            completion = null;
+            callback?.Invoke();
+            LoadInterstitialAd();
+            return;
         }
-        else
-        {
-            Debug.LogError("Interstitial ad is not ready yet.");
-            ExecuteOnAdClosed();
-        }
+        IsShowingAd = true;
+        interstitial.Show();
+    }
+
+    private void FinishAd(InterstitialAd ad, bool failed)
+    {
+        if (!IsShowingAd || ad != interstitial) return;
+        IsShowingAd = false;
+        if (failed && hasShowingGame) frequency.KeepDue(showingGame, Threshold(showingGame));
+        hasShowingGame = false;
+        interstitial = null;
+        ad.Destroy();
+        var callback = completion;
+        completion = null;
+        try { callback?.Invoke(); }
+        finally { LoadInterstitialAd(); }
     }
 }

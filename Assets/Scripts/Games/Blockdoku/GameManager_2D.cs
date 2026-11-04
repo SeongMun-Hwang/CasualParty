@@ -22,18 +22,10 @@ public class GameManager_2D : MonoBehaviour, IGameManager
     private int bestScore = 0;
     public int combo = 0;
     private bool isGameOver = false;
+    private bool boardReady;
+    public bool IsNewBest { get; private set; }
 
     // ... (rest of methods)
-
-    void OnEnable()
-    {
-        UI_Functions.OnGameRestart += HandleGameRestart;
-    }
-
-    void OnDisable()
-    {
-        UI_Functions.OnGameRestart -= HandleGameRestart;
-    }
 
     void Awake()
     {
@@ -57,7 +49,12 @@ public class GameManager_2D : MonoBehaviour, IGameManager
 
         if (File.Exists(BoardDataPath))
         {
-            LoadGameData();
+            try { LoadGameData(); }
+            catch (InvalidDataException e)
+            {
+                Debug.LogWarning(e.Message);
+                StartGame();
+            }
         }
         else
         {
@@ -74,23 +71,20 @@ public class GameManager_2D : MonoBehaviour, IGameManager
         // This logic will be implemented later.
     }
 
-    private void HandleGameRestart()
-    {
-        RemoveGameData();
-    }
-
     public void StartGame()
     {
         Debug.Log("GameManager_2D StartGame called.");
         score = 0;
         combo = 0;
         isGameOver = false;
+        IsNewBest = false;
 
         OnScoreChanged?.Invoke(score);
         OnBestScoreChanged?.Invoke(bestScore);
         OnGameOver?.Invoke(false);
 
         gridManager.InitializeGrid();
+        boardReady = true;
         RemoveGameData(); 
         
         if (blockSpawner != null)
@@ -221,16 +215,20 @@ public class GameManager_2D : MonoBehaviour, IGameManager
     {
         return score;
     }
+    public int GetBestScore() => bestScore;
     public void EndGame()
     {
+        if (isGameOver) return;
         isGameOver = true;
 
-        if (score > bestScore)
+        IsNewBest = score > bestScore;
+        if (IsNewBest)
         {
             bestScore = score;
             OnBestScoreChanged?.Invoke(bestScore);
         }
         SavePersonalData();
+        if (PlayGamesService.Instance != null) PlayGamesService.Instance.SubmitScore(LeaderboardKind.Blockdoku, score);
         RemoveGameData(); 
 
         OnGameOver?.Invoke(true);
@@ -244,7 +242,13 @@ public class GameManager_2D : MonoBehaviour, IGameManager
     public void GoToTitle()
     {
         if (!isGameOver) SaveGameData();
-        SceneManager.LoadScene("Title");
+        GameNavigation.Load("Title");
+    }
+
+    public void RestartGame()
+    {
+        GameNavigation.Load(SceneManager.GetActiveScene().name, RemoveGameData,
+            isGameOver ? (MinigameType?)null : MinigameType.Blockdoku);
     }
 
     public bool IsGameOver()
@@ -254,6 +258,7 @@ public class GameManager_2D : MonoBehaviour, IGameManager
 
     public void CheckGameOver()
     {
+        if (isGameOver) return;
         List<GameObject> remainingBlocks = blockSpawner.GetSpawnedBlocks();
         if (remainingBlocks.Count == 0) return;
 
@@ -278,8 +283,8 @@ public class GameManager_2D : MonoBehaviour, IGameManager
 
     public void SaveGameData()
     {
-        gridManager.SaveBoardData_2D(score, combo);
-        blockSpawner.SaveBlockData_2D();
+        if (isGameOver || !boardReady) return;
+        gridManager.SaveBoardData_2D(score, combo, blockSpawner.CaptureBlocks());
         Debug.Log("2D Game data saved!");
     }
 
@@ -288,10 +293,17 @@ public class GameManager_2D : MonoBehaviour, IGameManager
         (int loadedScore, int loadedCombo) = gridManager.LoadBoardData_2D();
         score = loadedScore;
         combo = loadedCombo;
+        boardReady = true;
         OnScoreChanged?.Invoke(score);
         OnBestScoreChanged?.Invoke(bestScore);
-        blockSpawner.LoadBlockData_2D();
+        blockSpawner.LoadBlockData_2D(gridManager.LoadedBlocks);
+        CheckGameOver();
         Debug.Log("2D Game data loaded!");
+    }
+
+    private void OnApplicationPause(bool paused)
+    {
+        if (paused && boardReady && !isGameOver && gridManager != null && blockSpawner != null) SaveGameData();
     }
 
     public void SavePersonalData()

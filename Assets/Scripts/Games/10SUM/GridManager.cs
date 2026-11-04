@@ -100,7 +100,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (TENSUM_GameManager.Instance.IsGameOver()) return;
+        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning) return;
         isDragging = true;
         dragStartCoords = GetCoordsFromPointer(eventData);
         UpdateSelection(dragStartCoords);
@@ -214,6 +214,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     private void ProcessSelectedCells()
     {
+        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning) return;
         if (selectedCells.Count == 0) return;
 
         int sum = 0;

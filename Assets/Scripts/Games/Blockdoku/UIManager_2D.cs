@@ -63,6 +63,17 @@ public class UIManager_2D : MonoBehaviour
         }
     }
 
+    void Start()
+    {
+        // Awake/OnEnable ordering between scene objects is not guaranteed.
+        OnDisable();
+        OnEnable();
+        if (GameManager_2D.Instance == null) return;
+        UpdateScore(GameManager_2D.Instance.GetScore());
+        UpdateBestScore(GameManager_2D.Instance.GetBestScore());
+        HandleGameOver(GameManager_2D.Instance.IsGameOver());
+    }
+
     private void HandleGameOver(bool isOver)
     {
         if (isOver)
@@ -107,7 +118,7 @@ public class UIManager_2D : MonoBehaviour
             if (show)
             {
                 if (finalScoreText != null) finalScoreText.text = $"Score: {finalScore}";
-                if (newBestObj != null) newBestObj.SetActive(finalScore > 0 && finalScore >= bestScore);
+                if (newBestObj != null) newBestObj.SetActive(GameManager_2D.Instance.IsNewBest);
                 Vibrate();
             }
         }
@@ -125,12 +136,11 @@ public class UIManager_2D : MonoBehaviour
 
     public void ResetPanelYes()
     {
-        GameManager_2D.Instance.RemoveGameData();
-        UI_Functions.Instance.TriggerGameRestart();
+        GameManager_2D.Instance.RestartGame();
     }
 
     public void Vibrate()
     {
-        // Handheld.Vibrate() or custom vibration logic
+        if (SettingsManager.Instance != null) SettingsManager.Instance.Vibrate();
     }
 }

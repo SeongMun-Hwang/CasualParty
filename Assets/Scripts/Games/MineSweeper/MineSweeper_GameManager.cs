@@ -42,7 +42,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     void Update()
     {
-        if (IsGameStarted && !IsGameOver)
+        if (IsGameStarted && !IsGameOver && !GameNavigation.IsTransitioning)
         {
             timer += Time.deltaTime;
             uiManager.UpdateTimer(timer);
@@ -122,10 +122,12 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     public void GameOver(bool win)
     {
+        if (IsGameOver) return;
         IsGameOver = true;
         if (win)
         {
             SaveBestTime();
+            if (PlayGamesService.Instance != null) PlayGamesService.Instance.SubmitTime(currentDifficulty, timer);
         }
 
         OnGameOver?.Invoke(true);
@@ -193,29 +195,13 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     public void RestartGame()
     {
-        if (IsGameOver)
-        {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-        }
-        else
-        {
-            AdEventBus.TriggerGamePlayEnded(MinigameType.MineSweeper, () => {
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-            });
-        }
+        GameNavigation.Load(SceneManager.GetActiveScene().name, null,
+            IsGameOver ? (MinigameType?)null : MinigameType.MineSweeper);
     }
 
     public void GoToTitle()
     {
-        if (IsGameOver)
-        {
-            SceneManager.LoadScene("Title");
-        }
-        else
-        {
-            AdEventBus.TriggerGamePlayEnded(MinigameType.MineSweeper, () => {
-                SceneManager.LoadScene("Title");
-            });
-        }
+        GameNavigation.Load("Title", null,
+            IsGameOver ? (MinigameType?)null : MinigameType.MineSweeper);
     }
 }

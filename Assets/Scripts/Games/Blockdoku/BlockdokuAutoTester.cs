@@ -24,6 +24,7 @@ public class BlockdokuAutoTester : MonoBehaviour
     private Dictionary<string, int> remainingBlockCounts = new Dictionary<string, int>();
 
     private Coroutine testCoroutine;
+    private bool adsBeforeTest;
 
     void Awake()
     {
@@ -62,7 +63,11 @@ public class BlockdokuAutoTester : MonoBehaviour
             }
         }
 
-        if (AdManager.Instance != null) AdManager.Instance.EnableAds = false;
+        if (AdManager.Instance != null)
+        {
+            adsBeforeTest = AdManager.Instance.EnableAds;
+            AdManager.Instance.EnableAds = false;
+        }
         testCoroutine = StartCoroutine(AutoPlayRoutine());
     }
 
@@ -74,7 +79,7 @@ public class BlockdokuAutoTester : MonoBehaviour
             StopCoroutine(testCoroutine);
             testCoroutine = null;
         }
-        if (AdManager.Instance != null) AdManager.Instance.EnableAds = true;
+        if (AdManager.Instance != null) AdManager.Instance.EnableAds = adsBeforeTest;
     }
 
     public void ExportToCSV()
@@ -139,6 +144,11 @@ public class BlockdokuAutoTester : MonoBehaviour
             }
 
             var spawnedBlocks = BlockSpawner_2D.Instance.GetSpawnedBlocks();
+            if (BlockSpawner_2D.Instance.IsProcessingPlacement)
+            {
+                yield return null;
+                continue;
+            }
             if (spawnedBlocks == null || spawnedBlocks.Count == 0)
             {
                 yield return new WaitForSeconds(0.5f);
@@ -190,6 +200,7 @@ public class BlockdokuAutoTester : MonoBehaviour
 
         isTesting = false;
         testCoroutine = null;
+        if (AdManager.Instance != null) AdManager.Instance.EnableAds = adsBeforeTest;
         Debug.Log("Auto Test Finished.");
     }
 

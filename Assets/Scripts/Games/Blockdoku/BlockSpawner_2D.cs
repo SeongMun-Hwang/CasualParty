@@ -262,9 +262,26 @@ public class BlockSpawner_2D : MonoBehaviour
     }
 
     private readonly List<GameObject> spawnedBlocks = new List<GameObject>();
+    public bool IsProcessingPlacement { get; private set; }
+    private Block_2D draggingBlock;
+
+    public bool TryBeginDrag(Block_2D block)
+    {
+        if (IsProcessingPlacement || draggingBlock != null) return false;
+        draggingBlock = block;
+        return true;
+    }
+
+    public void EndDrag(Block_2D block)
+    {
+        if (draggingBlock == block) draggingBlock = null;
+    }
 
     public void BlockPlaced(GameObject blockGO, Vector2Int gridPosition, List<Vector2Int> shape, Color blockColor)
     {
+        if (IsProcessingPlacement || GameManager_2D.Instance.IsGameOver() ||
+            !spawnedBlocks.Contains(blockGO) || !GridManager_2D.Instance.IsValidPlacement(gridPosition, shape)) return;
+        IsProcessingPlacement = true;
         spawnedBlocks.Remove(blockGO);
         StartCoroutine(BlockPlacedRoutine(gridPosition, shape, blockColor));
     }
@@ -274,13 +291,7 @@ public class BlockSpawner_2D : MonoBehaviour
         // Actually place the block on the grid
         int clearCount = GridManager_2D.Instance.PlaceBlock(gridPosition, shape, blockColor);
 
-        if (clearCount > 0)
-        {
-            // Wait for sequential clear animations to finish
-            float waitTime = clearCount * GridManager_2D.Instance.clearAnimationSequentialDelay + 0.4f;
-            yield return new WaitForSeconds(waitTime);
-        }
-
+        // Resolve the next hand before saving, even while the clear visuals are playing.
         if (spawnedBlocks.Count == 0)
         {
             SpawnBlocks();
@@ -291,6 +302,12 @@ public class BlockSpawner_2D : MonoBehaviour
             GameManager_2D.Instance.SaveGameData();
         }
         CheckForGameOver();
+        if (clearCount > 0)
+        {
+            float waitTime = clearCount * GridManager_2D.Instance.clearAnimationSequentialDelay + 0.5f;
+            yield return new WaitForSeconds(waitTime);
+        }
+        IsProcessingPlacement = false;
     }
 
     public void CheckForGameOver()
@@ -303,7 +320,7 @@ public class BlockSpawner_2D : MonoBehaviour
         return spawnedBlocks;
     }
 
-    public void SaveBlockData_2D()
+    public BlockSaveDatas_2D CaptureBlocks()
     {
         BlockSaveDatas_2D blockSaveDatas = new BlockSaveDatas_2D();
         blockSaveDatas.blocks = new List<BlockSaveData_2D>();
@@ -315,7 +332,7 @@ public class BlockSpawner_2D : MonoBehaviour
             if (block == null) continue;
             
             int blockArrayIndex = AllPossibleBlocks.IndexOf(block.BlockData);
-            int spawnIndex = spawnPositions.IndexOf(go.transform.parent);
+            int spawnIndex = spawnPositions.IndexOf(block.SpawnParent);
             
             blockSaveDatas.blocks.Add(new BlockSaveData_2D
             {
@@ -325,32 +342,32 @@ public class BlockSpawner_2D : MonoBehaviour
                 blockColor = block.blockColor
             });
         }
-        string json = JsonUtility.ToJson(blockSaveDatas);
-        File.WriteAllText(BlockDataPath, json);
+        return blockSaveDatas;
     }
 
-    public void LoadBlockData_2D()
+    public void LoadBlockData_2D(BlockSaveDatas_2D savedBlocks = null)
     {
         ClearSpawnedBlocks();
 
-        if (File.Exists(BlockDataPath))
+        if (savedBlocks == null) SaveManager.TryLoadData("blockData.json", out savedBlocks);
+        if (savedBlocks != null && savedBlocks.blocks != null)
         {
-            string json = File.ReadAllText(BlockDataPath);
-            BlockSaveDatas_2D blockSaveDatas = JsonUtility.FromJson<BlockSaveDatas_2D>(json);
-
-            foreach (BlockSaveData_2D data in blockSaveDatas.blocks)
+            var usedSlots = new HashSet<int>();
+            foreach (BlockSaveData_2D data in savedBlocks.blocks)
             {
+                if (data == null || !usedSlots.Add(data.spawnIndex)) continue;
                 if (data.blockArrayIndex < 0 || data.blockArrayIndex >= AllPossibleBlocks.Count) continue;
                 if (data.spawnIndex < 0 || data.spawnIndex >= spawnPositions.Count) continue;
 
                 Transform spawnPos = spawnPositions[data.spawnIndex];
                 GameObject blockGO = Instantiate(blockContainerPrefab, spawnPos.position, Quaternion.identity, spawnPos);
                 Block_2D blockScript = blockGO.GetComponent<Block_2D>();
-                blockScript.Initialize(AllPossibleBlocks[data.blockArrayIndex], data.rotationStep, data.blockColor);
+                blockScript.Initialize(AllPossibleBlocks[data.blockArrayIndex], ((data.rotationStep % 4) + 4) % 4, data.blockColor);
                 
                 spawnedBlocks.Add(blockGO);
             }
         }
+        if (spawnedBlocks.Count == 0) SpawnBlocks();
     }
 }
 

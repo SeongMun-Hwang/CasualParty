@@ -1,10 +1,12 @@
-using System.IO;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
 public class TitleManager : MonoBehaviour
 {
+    public void ShowRankings() => RankingsPanel.Open();
     //싱글게임 -> 새게임 버튼
     public void BlockdokuBtnOnClicked()
     {
@@ -19,10 +21,6 @@ public class TitleManager : MonoBehaviour
     public void MineSweeperBtnOnclicked()
     {
         SceneManager.LoadScene("MineSweeper");
-    }
-    public void TwoZeroFourEight()
-    {
-        SceneManager.LoadScene("2048");
     }
     public void QuitBtnOnClicked()
     {

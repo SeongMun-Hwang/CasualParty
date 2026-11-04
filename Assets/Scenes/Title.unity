@@ -412,6 +412,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 228170214}
   m_CullTransparentMesh: 1
+--- !u!1 &231386894
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 231386896}
+  - component: {fileID: 231386895}
+  m_Layer: 0
+  m_Name: GooglePlayGamesManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &231386895
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 231386894}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e52b9cc92729da74cb96601ef11cbe36, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GooglePlayGamesManager
+--- !u!4 &231386896
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 231386894}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1079.9982, y: -0.00001, z: 3615.111}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &326181380
 GameObject:
   m_ObjectHideFlags: 0
@@ -1059,7 +1103,7 @@ PrefabInstance:
       objectReference: {fileID: 1043639979}
     - target: {fileID: 4501207139770476986, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_MethodName
-      value: TwoZeroFourEight
+      value: ShowRankings
       objectReference: {fileID: 0}
     - target: {fileID: 4501207139770476986, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_OnClick.m_PersistentCalls.m_Calls.Array.data[0].m_TargetAssemblyTypeName
@@ -1067,7 +1111,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6067696467860351015, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_Name
-      value: 2048Btn
+      value: RankingsBtn
       objectReference: {fileID: 0}
     - target: {fileID: 6067696467860351032, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_Pivot.x
@@ -1152,22 +1196,22 @@ PrefabInstance:
     - target: {fileID: 6067696468438814954, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_Sprite
       value: 
-      objectReference: {fileID: 21300000, guid: bb244f8131fcf49a2b15c89f763ee7b5, type: 3}
+      objectReference: {fileID: 21300000, guid: ae7020f5b04aa4c739ea5f6e3c46ef52, type: 3}
     - target: {fileID: 6067696468864908910, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7016391421997232863, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_text
-      value: 2048
+      value: RANKING
       objectReference: {fileID: 0}
     - target: {fileID: 7016391421997232863, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_fontSize
-      value: 110
+      value: 70
       objectReference: {fileID: 0}
     - target: {fileID: 7016391421997232863, guid: a81c5623db96c4553b06023224d478a7, type: 3}
       propertyPath: m_fontSizeMax
-      value: 110
+      value: 70
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 6067696467860351033, guid: a81c5623db96c4553b06023224d478a7, type: 3}
@@ -1302,6 +1346,9 @@ MonoBehaviour:
   _enableAds: 1
   _adUnitId: ca-app-pub-6320794629071327/8837498210
   _bannerAdUnitId: ca-app-pub-6320794629071327/3181995510
+  blockdokuFrequency: 1
+  tenSumFrequency: 3
+  mineSweeperFrequency: 2
 --- !u!1 &1662671000
 GameObject:
   m_ObjectHideFlags: 0
@@ -2045,3 +2092,4 @@ SceneRoots:
   - {fileID: 1634822059}
   - {fileID: 981482482}
   - {fileID: 1069625622}
+  - {fileID: 231386896}

@@ -7,8 +7,6 @@ public class UI_Functions : MonoBehaviour
 {
     public static UI_Functions Instance { get; private set; }
 
-    public static event Action OnGameRestart;
-
     void Awake()
     {
         if (Instance == null)
@@ -25,7 +23,7 @@ public class UI_Functions : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             HandleBackInput();
         }
@@ -88,12 +86,16 @@ public class UI_Functions : MonoBehaviour
 
     public void BacktoTitleOnClicked()
     {
-        SceneManager.LoadScene("Title");
+        if (GameManager_2D.Instance != null) GameManager_2D.Instance.GoToTitle();
+        else if (TENSUM_GameManager.Instance != null) TENSUM_GameManager.Instance.GoToTitle();
+        else if (MineSweeper_GameManager.Instance != null) MineSweeper_GameManager.Instance.GoToTitle();
+        else GameNavigation.Load("Title");
     }
 
     public void TriggerGameRestart()
     {
-        OnGameRestart?.Invoke();
-        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        if (GameManager_2D.Instance != null) GameManager_2D.Instance.RestartGame();
+        else if (TENSUM_GameManager.Instance != null) TENSUM_GameManager.Instance.RestartGame();
+        else if (MineSweeper_GameManager.Instance != null) MineSweeper_GameManager.Instance.RestartGame();
     }
 }

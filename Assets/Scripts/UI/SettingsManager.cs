@@ -62,16 +62,14 @@ public class SettingsManager : MonoBehaviour
 
     public void SaveSettings()
     {
-        string json = JsonUtility.ToJson(settings);
-        File.WriteAllText(SavePaths.SettingDataPath, json);
+        SaveManager.SaveData("setting.json", settings);
     }
 
     private void LoadSettings()
     {
-        if (File.Exists(SavePaths.SettingDataPath))
+        if (SaveManager.TryLoadData<AudioData>("setting.json", out var loaded))
         {
-            string json = File.ReadAllText(SavePaths.SettingDataPath);
-            settings = JsonUtility.FromJson<AudioData>(json);
+            settings = loaded;
         }
         else
         {

@@ -88,6 +88,7 @@ public class MineSweeper_GridManager : MonoBehaviour
 
     public void OnCellClicked(int row, int col)
     {
+        if (MineSweeper_GameManager.Instance.IsGameOver || GameNavigation.IsTransitioning) return;
         if (!minesGenerated)
         {
             GenerateMines(row, col);
@@ -122,6 +123,7 @@ public class MineSweeper_GridManager : MonoBehaviour
 
     public void AttemptChord(int row, int col)
     {
+        if (MineSweeper_GameManager.Instance.IsGameOver || GameNavigation.IsTransitioning) return;
         MineSweeper_Cell cell = cells[row, col];
         if (!cell.IsRevealed || cell.AdjacentMines == 0) return;
 
@@ -207,6 +209,7 @@ public class MineSweeper_GridManager : MonoBehaviour
 
     private void RevealCell(int row, int col)
     {
+        if (MineSweeper_GameManager.Instance.IsGameOver || GameNavigation.IsTransitioning) return;
         if (row < 0 || row >= rows || col < 0 || col >= cols) return;
         MineSweeper_Cell startCell = cells[row, col];
         if (startCell.IsRevealed || startCell.IsFlagged) return;

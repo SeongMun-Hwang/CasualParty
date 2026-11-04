@@ -28,6 +28,8 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
     private Vector2Int lastGridPosition;
     private int currentRotationStep; // New field to store rotation step
     public int CurrentRotationStep { get { return currentRotationStep; } } // Public getter
+    public Transform SpawnParent { get; private set; }
+    private bool isDragging;
 
     private readonly List<Transform> childCubes = new List<Transform>();
     private Vector2 anchorOffsetPixels;
@@ -42,6 +44,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
         blockData = data;
         blockColor = color; 
         currentRotationStep = rotationCount;
+        SpawnParent = transform.parent;
         
         // Apply initial spawn scale
         rectTransform.localScale = Vector3.one * spawnScale;
@@ -141,6 +144,9 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnPointerDown(PointerEventData eventData)
     {
+        if (GameNavigation.IsTransitioning || GameManager_2D.Instance == null || GameManager_2D.Instance.IsGameOver() ||
+            BlockSpawner_2D.Instance == null || !BlockSpawner_2D.Instance.TryBeginDrag(this)) return;
+        isDragging = true;
         originalPosition = rectTransform.anchoredPosition;
         originalParent = transform.parent;
         if (canvas == null) canvas = GetComponentInParent<Canvas>();
@@ -167,6 +173,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (!isDragging) return;
         // Apply movement with multiplier
         rectTransform.anchoredPosition += (eventData.delta / canvas.scaleFactor) * dragMovementMultiplier;
 
@@ -184,6 +191,9 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnPointerUp(PointerEventData eventData)
     {
+        if (!isDragging) return;
+        isDragging = false;
+        BlockSpawner_2D.Instance.EndDrag(this);
         if (GridManager_2D.Instance != null)
         {
             GridManager_2D.Instance.ClearPreview();
@@ -215,5 +225,24 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
             rectTransform.localScale = (Vector3)originalScale;
             rectTransform.anchoredPosition = originalPosition;
         }
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused) CancelDrag();
+    }
+
+    private void OnDisable() => CancelDrag();
+
+    private void CancelDrag()
+    {
+        if (!isDragging) return;
+        isDragging = false;
+        if (BlockSpawner_2D.Instance != null) BlockSpawner_2D.Instance.EndDrag(this);
+        if (GridManager_2D.Instance != null) GridManager_2D.Instance.ClearPreview();
+        if (originalParent == null) return;
+        transform.SetParent(originalParent, false);
+        rectTransform.localScale = (Vector3)originalScale;
+        rectTransform.anchoredPosition = originalPosition;
     }
 }

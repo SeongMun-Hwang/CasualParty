@@ -65,7 +65,7 @@ public class Cell_2D : BaseCell
     }
 
     // 기존 SetEmpty 로직을 시각적 업데이트와 논리 업데이트로 명확히 분리
-    public void SetEmpty()
+    public override void SetEmpty()
     {
         if (!IsClearing && !IsEmpty) return;
 

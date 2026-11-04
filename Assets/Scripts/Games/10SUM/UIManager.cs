@@ -21,11 +21,7 @@ public class UIManager : MonoBehaviour
         {
             TENSUM_GameManager.Instance.OnScoreChanged += UpdateScore;
             TENSUM_GameManager.Instance.OnBestScoreChanged += UpdateBestScoreMainGame;
-            TENSUM_GameManager.Instance.OnGameOver += (isOver) => 
-            {
-                if (isOver) ShowGameOverPanel(true, TENSUM_GameManager.Instance.GetScore()); 
-                else ShowGameOverPanel(false);
-            };
+            TENSUM_GameManager.Instance.OnGameOver += HandleGameOver;
         }
     }
 
@@ -35,7 +31,20 @@ public class UIManager : MonoBehaviour
         {
             TENSUM_GameManager.Instance.OnScoreChanged -= UpdateScore;
             TENSUM_GameManager.Instance.OnBestScoreChanged -= UpdateBestScoreMainGame;
+            TENSUM_GameManager.Instance.OnGameOver -= HandleGameOver;
         }
+    }
+
+    private void HandleGameOver(bool isOver) => ShowGameOverPanel(isOver, TENSUM_GameManager.Instance.GetScore());
+
+    void Start()
+    {
+        OnDisable();
+        OnEnable();
+        if (TENSUM_GameManager.Instance == null) return;
+        UpdateScore(TENSUM_GameManager.Instance.GetScore());
+        UpdateBestScoreMainGame(TENSUM_GameManager.Instance.GetBestScore());
+        HandleGameOver(TENSUM_GameManager.Instance.IsGameOver());
     }
 
     public void UpdateTimer(float timeInSeconds)

@@ -68,7 +68,9 @@ public class GridManager_2D : MonoBehaviour
         public List<SerializableColor> cellColors = new List<SerializableColor>(GRID_SIZE * GRID_SIZE);
         public int score;
         public int combo;
+        public BlockSpawner_2D.BlockSaveDatas_2D blocks;
     }
+    public BlockSpawner_2D.BlockSaveDatas_2D LoadedBlocks { get; private set; }
 
     void Awake()
     {
@@ -176,6 +178,7 @@ public class GridManager_2D : MonoBehaviour
 
     public int PlaceBlock(Vector2Int gridPosition, List<Vector2Int> blockShape, Color blockColor)
     {
+        if (!IsValidPlacement(gridPosition, blockShape)) return 0;
         StopClearPredictBlink();
 
         if (GameManager_2D.Instance != null) GameManager_2D.Instance.StartBatchScoring();
@@ -193,7 +196,6 @@ public class GridManager_2D : MonoBehaviour
         if (GameManager_2D.Instance != null)
         {
             GameManager_2D.Instance.EndBatchScoring();
-            GameManager_2D.Instance.SaveGameData();
         }
         return clearCount;
     }
@@ -348,11 +350,11 @@ public class GridManager_2D : MonoBehaviour
         }
         int linesClearedCount = CalculateLinesClearedCount(currentOccupied);
         
-        int totalOccupiedBefore = 0;
+        int remainingOccupied = 0;
         for (int r = 0; r < GRID_SIZE; r++)
-            for (int c = 0; c < GRID_SIZE; c++) if (!grid[r, c].IsEmpty) totalOccupiedBefore++;
+            for (int c = 0; c < GRID_SIZE; c++) if (!grid[r, c].IsEmpty) remainingOccupied++;
 
-        bool isFullClear = totalOccupiedBefore == cellsToClear.Count;
+        bool isFullClear = remainingOccupied == 0;
 
         StartCoroutine(SequentialClear(cellsToClear));
         GameManager_2D.Instance.combo += linesClearedCount;
@@ -400,7 +402,7 @@ public class GridManager_2D : MonoBehaviour
             else if (vSym) { GameManager_2D.Instance.AddSpecialScore(bonus, "V-SYMMETRY"); PlaySymmetryAnimation("V"); }
             else if (d1Sym || d2Sym) { GameManager_2D.Instance.AddSpecialScore(bonus, "DIAG-SYMMETRY"); PlaySymmetryAnimation(d1Sym ? "D1" : "D2"); }
         }
-        return symmetryAchieved;
+        return occupiedCount > 0 && symmetryAchieved;
     }
 
     public void PlayFullClearAnimation(List<Color> sourceColors = null)
@@ -460,7 +462,8 @@ public class GridManager_2D : MonoBehaviour
 
         float duration = overrideDuration ?? symmetryEffectDuration;
         Sequence seq = DOTween.Sequence();
-        seq.SetTarget(item.go); 
+        seq.SetTarget(item.go);
+        seq.SetLink(item.go);
         Vector2 lastGhostPos = path[0];
 
         for (int i = 0; i < path.Length - 1; i++)
@@ -479,7 +482,7 @@ public class GridManager_2D : MonoBehaviour
             }));
         }
         seq.SetEase(Ease.OutQuad).OnComplete(() => {
-            rt.DOScale(0f, 0.2f).OnComplete(() => ReturnSymmetryObject(item));
+            rt.DOScale(0f, 0.2f).SetLink(item.go).OnComplete(() => ReturnSymmetryObject(item));
         });
     }
 
@@ -495,9 +498,9 @@ public class GridManager_2D : MonoBehaviour
             Color c = (color == Color.clear) ? Color.white : color;
             c.a = 1f;
             img.color = c;
-            img.DOFade(0f, trailExist);
+            img.DOFade(0f, trailExist).SetLink(item.go);
         }
-        rt.DOScale(0f, trailExist).SetEase(Ease.InQuad).OnComplete(() => ReturnSymmetryObject(item));
+        rt.DOScale(0f, trailExist).SetLink(item.go).SetEase(Ease.InQuad).OnComplete(() => ReturnSymmetryObject(item));
     }
 
     private List<Color> GetRandomActiveColors(int count)
@@ -632,9 +635,9 @@ public class GridManager_2D : MonoBehaviour
         }
     }
 
-    public void SaveBoardData_2D(int score, int combo)
+    public void SaveBoardData_2D(int score, int combo, BlockSpawner_2D.BlockSaveDatas_2D blocks)
     {
-        SaveData_2D data = new SaveData_2D { score = score, combo = combo };
+        SaveData_2D data = new SaveData_2D { score = score, combo = combo, blocks = blocks };
         for (int i = 0; i < GRID_SIZE * GRID_SIZE; i++) data.cellColors.Add(new SerializableColor());
         for (int r = 0; r < GRID_SIZE; r++)
             for (int c = 0; c < GRID_SIZE; c++)
@@ -643,14 +646,17 @@ public class GridManager_2D : MonoBehaviour
                 data.cellOccupiedStates[idx] = !grid[r, c].IsEmpty;
                 data.cellColors[idx] = grid[r, c].BlockColor;
             }
-        File.WriteAllText(BoardDataPath, JsonUtility.ToJson(data));
+        SaveManager.SaveData("save.json", data);
     }
 
     public (int score, int combo) LoadBoardData_2D()
     {
-        if (!File.Exists(BoardDataPath)) return (0, 0);
-        SaveData_2D data = JsonUtility.FromJson<SaveData_2D>(File.ReadAllText(BoardDataPath));
+        LoadedBlocks = null;
+        if (!SaveManager.TryLoadData<SaveData_2D>("save.json", out var data) ||
+            data.cellOccupiedStates == null || data.cellOccupiedStates.Length != GRID_SIZE * GRID_SIZE)
+            throw new InvalidDataException("Invalid Blockdoku board save.");
         InitializeGrid();
+        if (data.cellColors == null) data.cellColors = new List<SerializableColor>();
         while (data.cellColors.Count < GRID_SIZE * GRID_SIZE) data.cellColors.Add(new SerializableColor());
         for (int r = 0; r < GRID_SIZE; r++)
             for (int c = 0; c < GRID_SIZE; c++)
@@ -659,6 +665,7 @@ public class GridManager_2D : MonoBehaviour
                 if (data.cellOccupiedStates[idx]) grid[r, c].SetOccupied(data.cellColors[idx]);
                 else grid[r, c].SetEmpty();
             }
-        return (data.score, data.combo);
+        LoadedBlocks = data.blocks;
+        return (Mathf.Max(0, data.score), Mathf.Max(0, data.combo));
     }
 }

@@ -42,7 +42,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
 
     void Update()
     {
-        if (isGameOver) return;
+        if (isGameOver || GameNavigation.IsTransitioning) return;
 
         timer -= Time.deltaTime;
         uiManager.UpdateTimer(timer);
@@ -70,6 +70,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
 
     public void AddScore(int amount)
     {
+        if (isGameOver || GameNavigation.IsTransitioning) return;
         score += amount;
         OnScoreChanged?.Invoke(score);
         if (uiManager != null) uiManager.UpdateScore(score);
@@ -91,6 +92,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
         }
 
         OnGameOver?.Invoke(true);
+        if (PlayGamesService.Instance != null) PlayGamesService.Instance.SubmitScore(LeaderboardKind.TenSum, score);
         if (uiManager != null) uiManager.ShowGameOverPanel(true, score);
 
         AdEventBus.TriggerGamePlayEnded(MinigameType.TenSum, null);
@@ -113,30 +115,13 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
 
     public void RestartGame()
     {
-        if (isGameOver)
-        {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-        }
-        else
-        {
-            AdEventBus.TriggerGamePlayEnded(MinigameType.TenSum, () => {
-                SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-            });
-        }
+        GameNavigation.Load(SceneManager.GetActiveScene().name, null,
+            isGameOver ? (MinigameType?)null : MinigameType.TenSum);
     }
 
     public void GoToTitle()
     {
-        if (isGameOver)
-        {
-            SceneManager.LoadScene("Title");
-        }
-        else
-        {
-            AdEventBus.TriggerGamePlayEnded(MinigameType.TenSum, () => {
-                SceneManager.LoadScene("Title");
-            });
-        }
+        GameNavigation.Load("Title", null, isGameOver ? (MinigameType?)null : MinigameType.TenSum);
     }
 
     public bool IsGameOver()

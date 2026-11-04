@@ -3,20 +3,12 @@ using UnityEngine;
 
 public static class SavePaths
 {
-    public static string BlockDataPath => Application.persistentDataPath + "/blockData.json";
-    public static string BoardDataPath => Application.persistentDataPath + "/save.json";
-    public static string SettingDataPath => Application.persistentDataPath + "/setting.json";
-    public static string PersonalDataPath => Application.persistentDataPath + "/personal.json";
-    public static string TenSumDataPath => Application.persistentDataPath + "/TenSum.json";
-    public static string MineSweeperDataPath => Application.persistentDataPath + "/MineSweeper.json";
-    public static string _2048DataPath => Application.persistentDataPath + "/2048.json";
-}
-
-[System.Serializable]
-public class SaveData2048
-{
-    public int[] values;
-    public int score;
+    public static string BlockDataPath => SaveManager.DataDirectory + "/blockData.json";
+    public static string BoardDataPath => SaveManager.DataDirectory + "/save.json";
+    public static string SettingDataPath => SaveManager.DataDirectory + "/setting.json";
+    public static string PersonalDataPath => SaveManager.DataDirectory + "/personal.json";
+    public static string TenSumDataPath => SaveManager.DataDirectory + "/TenSum.json";
+    public static string MineSweeperDataPath => SaveManager.DataDirectory + "/MineSweeper.json";
 }
 
 [System.Serializable]
