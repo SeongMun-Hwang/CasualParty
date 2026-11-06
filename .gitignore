@@ -73,3 +73,6 @@ crashlytics-build.properties
 Assets/google-services.json
 Assets/google-services.json.meta
 TestingResults.csv
+
+# Local project documentation
+/[Dd]ocs/

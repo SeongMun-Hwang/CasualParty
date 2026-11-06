@@ -9,6 +9,7 @@ public static class GameMenuVisualFixTools
 {
     public static void Apply()
     {
+        if (GameMenuPrefabTools.Exists) { GameMenuPrefabTools.EditShared(Fix); return; }
         foreach (var name in new[] { "Blockdoku_2D", "10SUM", "MineSweeper" })
         {
             var scene = EditorSceneManager.OpenScene("Assets/Scenes/" + name + ".unity");

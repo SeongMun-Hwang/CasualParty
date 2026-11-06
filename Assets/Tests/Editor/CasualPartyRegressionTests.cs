@@ -15,6 +15,22 @@ public sealed class CasualPartyRegressionTests
     private int boundaryCount;
     private Action pendingBoundary;
 
+    [Test]
+    public void SharedGameMenuAssetKeepsActionsAndSettingsInsideThePrefab()
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(GameMenuPrefabTools.PrefabPath);
+        Assert.NotNull(prefab);
+        Assert.IsNull(prefab.GetComponent<GameMenu>(), "The scene owner must not be saved in the prefab");
+        var actions = prefab.GetComponent<GameMenuPopup>();
+        var settings = prefab.GetComponent<SettingsUI>();
+        Assert.NotNull(actions); Assert.NotNull(settings);
+        foreach (var slider in new[] { settings.bgmVolumeSlider, settings.sfxVolumeSlider, settings.vibrationVolumeSlider })
+            Assert.True(slider.transform.IsChildOf(prefab.transform));
+        foreach (var button in prefab.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+            for (int i = 0; i < button.onClick.GetPersistentEventCount(); i++)
+                Assert.AreSame(actions, button.onClick.GetPersistentTarget(i), button.name + " has a non-local or missing event target");
+    }
+
     [TestCase("Title", LeaderboardTarget.All)]
     [TestCase("Blockdoku_2D", LeaderboardTarget.Blockdoku)]
     [TestCase("10SUM", LeaderboardTarget.TenSum)]
@@ -50,6 +66,11 @@ public sealed class CasualPartyRegressionTests
             Assert.IsNull(header.Find("ResetBtn"));
             var menu = header.GetComponentInParent<GameMenu>();
             Assert.NotNull(menu);
+            var sharedPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(GameMenuPrefabTools.PrefabPath);
+            Assert.NotNull(sharedPrefab);
+            Assert.AreSame(sharedPrefab, PrefabUtility.GetCorrespondingObjectFromSource(menu.popup));
+            var popupActions = menu.popup.GetComponent<GameMenuPopup>();
+            Assert.NotNull(popupActions);
             Assert.False(menu.popup.activeSelf);
             var card = menu.popup.transform.Find("SettingsCard");
             Assert.IsNull(card.Find("Title"));
@@ -63,7 +84,7 @@ public sealed class CasualPartyRegressionTests
             {
                 var action = Array.Find(popupButtons, b => b.name == actionName);
                 Assert.NotNull(action);
-                Assert.AreSame(menu, action.onClick.GetPersistentTarget(0));
+                Assert.AreSame(popupActions, action.onClick.GetPersistentTarget(0));
                 Assert.AreEqual(actionName == "ResetBtn" ? "Restart" : "ReturnToTitle", action.onClick.GetPersistentMethodName(0));
                 Assert.Less(((RectTransform)action.transform).anchoredPosition.y, settings.vibrationVolumeSlider.GetComponent<RectTransform>().anchoredPosition.y);
             }
@@ -212,6 +233,9 @@ public sealed class CasualPartyRegressionTests
         var buttons = new[] { settings.bgmMuteButton, settings.sfxMuteButton, settings.vibrationMuteButton };
         for (int channel = 0; channel < buttons.Length; channel++)
         {
+            var backgroundSprite = buttons[channel].GetComponent<UnityEngine.UI.Image>().sprite;
+            var stateIcon = channel == 0 ? settings.bgmMuteButtonIcon : channel == 1 ? settings.sfxMuteButtonIcon : settings.vibrationMuteButtonIcon;
+            Assert.AreNotSame(buttons[channel].targetGraphic, stateIcon, "Mute state must change the icon, not the button face");
             for (int repeat = 0; repeat < 2; repeat++)
             {
                 bool wasMuted = channel == 0 ? SettingsManager.Instance.BgmMute : channel == 1 ? SettingsManager.Instance.SfxMute : SettingsManager.Instance.VibrationMute;
@@ -223,11 +247,14 @@ public sealed class CasualPartyRegressionTests
                 Assert.AreEqual(!wasMuted, channel == 0 ? SettingsManager.Instance.BgmMute : channel == 1 ? SettingsManager.Instance.SfxMute : SettingsManager.Instance.VibrationMute);
                 Assert.True(menu.popup.activeInHierarchy);
                 Assert.True(card.activeInHierarchy);
+                Assert.AreSame(backgroundSprite, button.GetComponent<UnityEngine.UI.Image>().sprite);
                 Assert.AreEqual(backdropTint, backdropImage.canvasRenderer.GetColor(), "Backdrop changed tint while muting");
                 Assert.AreEqual(cardTint, cardImage.canvasRenderer.GetColor(), "Card changed tint while muting");
             }
         }
-        menu.Close();
+        var closeButton = Array.Find(menu.popup.GetComponentsInChildren<UnityEngine.UI.Button>(true), b => b.name == "CloseBtn");
+        UnityEngine.EventSystems.ExecuteEvents.ExecuteHierarchy(closeButton.gameObject, pointer, UnityEngine.EventSystems.ExecuteEvents.pointerClickHandler);
+        Assert.False(GameMenu.IsOpen, "The shared prefab must route Close to its scene's GameMenu");
         yield return new ExitPlayMode();
     }
 
@@ -420,6 +447,13 @@ public sealed class CasualPartyRegressionTests
         new GameObject("Test Settings").AddComponent<SettingsManager>();
         var load = LoadBlockdoku();
         while (load.MoveNext()) yield return load.Current;
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        menu.Open();
+        var restart = Array.Find(menu.popup.GetComponentsInChildren<UnityEngine.UI.Button>(true), b => b.name == "ResetBtn");
+        restart.onClick.Invoke();
+        Assert.False(GameMenu.IsOpen);
+        Assert.True(GameManager_2D.Instance.uiManager.gameResetPanel.activeSelf, "The prefab restart must retain Blockdoku's confirmation");
+        GameManager_2D.Instance.uiManager.gameResetPanel.SetActive(false);
         var ui = UI_Functions.Instance != null ? UI_Functions.Instance : new GameObject("Test Navigation").AddComponent<UI_Functions>();
         if (AdManager.Instance != null)
         {

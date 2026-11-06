@@ -31,6 +31,9 @@ public static class LeaderboardLayoutTools
                 ApplyGameHeader(scene, rects, name);
                 HeaderStatLayoutTools.ApplyScene(scene);
             }
+            CasualButtonStyleTools.ApplyScene(scene);
+            if (name != "Title")
+                foreach (var menu in scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<GameMenu>(true))) GameMenuPrefabTools.Connect(menu);
             EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
         }
         AssetDatabase.SaveAssets();
@@ -47,6 +50,7 @@ public static class LeaderboardLayoutTools
         var reset = header.GetComponentsInChildren<Button>(true).FirstOrDefault(b => b.name == "ResetBtn");
         if (menu.popup != null)
         {
+            if (PrefabUtility.IsAnyPrefabInstanceRoot(menu.popup)) PrefabUtility.UnpackPrefabInstance(menu.popup, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
             back = menu.popup.GetComponentsInChildren<Button>(true).First(b => b.name == "BackToTitleBtn");
             reset = menu.popup.GetComponentsInChildren<Button>(true).First(b => b.name == "ResetBtn");
             back.transform.SetParent(header, false); reset.transform.SetParent(header, false);
@@ -210,6 +214,11 @@ public static class LeaderboardLayoutTools
     public static void Preview()
     {
         Apply();
+        PreviewExisting();
+    }
+
+    public static void PreviewExisting()
+    {
         foreach (var name in new[] { "Title", "Blockdoku_2D", "10SUM", "MineSweeper" })
         {
             var scene = EditorSceneManager.OpenScene("Assets/Scenes/" + name + ".unity");
@@ -239,6 +248,11 @@ public static class LeaderboardLayoutTools
                 menu.popup.SetActive(true); Canvas.ForceUpdateCanvases(); camera.Render();
                 png.ReadPixels(new Rect(0, 0, 1080, 1920), 0, 0); png.Apply();
                 System.IO.File.WriteAllBytes(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CasualPartyVerification", name + "-menu.png"), png.EncodeToPNG());
+                var settings = menu.popup.GetComponent<SettingsUI>();
+                settings.sfxMuteButtonIcon.sprite = settings.sfxOff;
+                Canvas.ForceUpdateCanvases(); camera.Render();
+                png.ReadPixels(new Rect(0, 0, 1080, 1920), 0, 0); png.Apply();
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CasualPartyVerification", name + "-sfx-off.png"), png.EncodeToPNG());
             }
             RenderTexture.active = previous; camera.targetTexture = null;
             Object.DestroyImmediate(png); Object.DestroyImmediate(texture); Object.DestroyImmediate(cameraGo);
