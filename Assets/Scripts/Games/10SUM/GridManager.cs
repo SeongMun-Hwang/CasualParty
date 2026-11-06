@@ -100,7 +100,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning) return;
+        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
         isDragging = true;
         dragStartCoords = GetCoordsFromPointer(eventData);
         UpdateSelection(dragStartCoords);
@@ -108,6 +108,13 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (RankingOverlay.IsOpen)
+        {
+            isDragging = false;
+            ClearSelectedCellsVisual();
+            selectedCells.Clear();
+            return;
+        }
         if (isDragging)
         {
             Vector2Int currentCoords = GetCoordsFromPointer(eventData);
@@ -214,7 +221,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     private void ProcessSelectedCells()
     {
-        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning) return;
+        if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
         if (selectedCells.Count == 0) return;
 
         int sum = 0;

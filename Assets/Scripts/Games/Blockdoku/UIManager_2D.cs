@@ -36,9 +36,12 @@ public class UIManager_2D : MonoBehaviour
         if (gameResetPanel != null) gameResetPanel.SetActive(false);
         if (settingPanel != null) settingPanel.SetActive(false);
 
-        if (restartButton != null) restartButton.onClick.AddListener(ShowResetPanel);
-        if (titleButton != null) titleButton.onClick.AddListener(() => GameManager_2D.Instance.GoToTitle());
-        if (settingsButton != null) settingsButton.onClick.AddListener(ToggleSettingPanel);
+        if (GetComponent<GameMenu>() == null)
+        {
+            if (restartButton != null) restartButton.onClick.AddListener(ShowResetPanel);
+            if (titleButton != null) titleButton.onClick.AddListener(() => GameManager_2D.Instance.GoToTitle());
+            if (settingsButton != null) settingsButton.onClick.AddListener(ToggleSettingPanel);
+        }
         if (ResetPanelYesButton != null) ResetPanelYesButton.onClick.AddListener(ResetPanelYes);
         if (GameOverPanelYesButton != null) GameOverPanelYesButton.onClick.AddListener(() => UI_Functions.Instance.BacktoTitleOnClicked());
     }

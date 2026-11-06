@@ -7,6 +7,13 @@ public class MineSweeper_UIManager : MonoBehaviour
     [Header("Main Game UI")]
     public TextMeshProUGUI timerText;
     public TextMeshProUGUI mineCountText;
+    public TextMeshProUGUI headerBestTimeText;
+
+    public void UpdateHeaderBestTime(float time)
+    {
+        if (headerBestTimeText != null)
+            headerBestTimeText.text = "Best: " + (time == float.MaxValue ? "--:--" : FormatTime(time));
+    }
     public Vector2 joystickInput;
 
     [Header("Difficulty Selection")]

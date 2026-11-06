@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 #if UNITY_ANDROID
 using GooglePlayGames;
 using GooglePlayGames.BasicApi;
@@ -24,6 +25,8 @@ public sealed class PlayGamesService : MonoBehaviour
     private int authenticationRequest;
     private ILeaderboardScoreUploader scoreUploader = new LeaderboardScoreUploader();
     private bool openingLeaderboard;
+    public bool IsLeaderboardVisible { get; private set; }
+    public bool IsLeaderboardBusy => openingLeaderboard || IsLeaderboardVisible;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
@@ -38,15 +41,43 @@ public sealed class PlayGamesService : MonoBehaviour
         DontDestroyOnLoad(gameObject);
         settings = Resources.Load<LeaderboardSettings>("LeaderboardSettings");
         outbox = SaveManager.LoadData<ScoreOutbox>("pendingScores.json");
+        SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    private void Start() => SignIn(false);
+    // The native SDK may authenticate its platform identity independently.
+    // This app does not access that identity or enable ranking uploads until SignIn is chosen.
+    private void Start() => OfferLoginChoice();
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => OfferLoginChoice();
+
+    private void OfferLoginChoice()
+    {
+        if (SceneManager.GetActiveScene().name != "Title" || IsAuthenticated || IsSigningIn) return;
+        if (!SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json").hasChosen)
+            RankingsPanel.OpenLoginChoice();
+    }
+
+    public void ContinueAsGuest()
+    {
+        SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true });
+        authenticationRequest++;
+        IsSigningIn = false;
+        IsAuthenticated = false;
+        playerId = null;
+        PlayerName = string.Empty;
+        ScoreStatus = string.Empty;
+        SetStatus("Play locally. Sign in to use rankings.");
+    }
 
     public bool IsConfigured(LeaderboardKind kind) => settings != null && !string.IsNullOrWhiteSpace(settings.GetId(kind));
 
-    public void SignIn() => SignIn(true);
+    public void SignIn()
+    {
+        SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true });
+        BeginUserSignIn();
+    }
 
-    private void SignIn(bool interactive)
+    private void BeginUserSignIn()
     {
         if (IsSigningIn || IsAuthenticated) return;
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -59,7 +90,7 @@ public sealed class PlayGamesService : MonoBehaviour
         IsSigningIn = true;
         LastAuthenticationResult = "Pending";
         if (Debug.isDebugBuild) PlayGamesPlatform.DebugLogEnabled = true;
-        Debug.Log($"[PlayGames] Authentication started. Flow={(interactive ? "manual" : "automatic")}, appId={platformSettings.AppId}, package={Application.identifier}");
+        Debug.Log($"[PlayGames] Authentication started. Flow=manual, appId={platformSettings.AppId}, package={Application.identifier}");
         SetStatus("Signing in...");
         int request = ++authenticationRequest;
         Action<SignInStatus> callback = result =>
@@ -68,18 +99,17 @@ public sealed class PlayGamesService : MonoBehaviour
             IsSigningIn = false;
             LastAuthenticationResult = result.ToString();
             if (result == SignInStatus.Success) Debug.Log("[PlayGames] Authentication succeeded.");
-            else Debug.LogWarning($"[PlayGames] Authentication failed. Status={result}, code={(int)result}, flow={(interactive ? "manual" : "automatic")}. Check the installed signing certificate and PGS tester access; this status alone does not identify the cause.");
+            else Debug.LogWarning($"[PlayGames] Authentication failed. Status={result}, code={(int)result}, flow=manual. Check the installed signing certificate and PGS tester access; this status alone does not identify the cause.");
             IsAuthenticated = result == SignInStatus.Success;
             playerId = IsAuthenticated ? PlayGamesPlatform.Instance.GetUserId() : null;
             PlayerName = IsAuthenticated ? PlayGamesPlatform.Instance.GetUserDisplayName() : string.Empty;
             SetStatus(IsAuthenticated ? "Signed in as " + PlayerName : "Sign-in did not complete. You can try again.");
             if (IsAuthenticated) Flush();
         };
-        if (interactive) PlayGamesPlatform.Instance.ManuallyAuthenticate(callback);
-        else PlayGamesPlatform.Instance.Authenticate(callback);
+        PlayGamesPlatform.Instance.ManuallyAuthenticate(callback);
         StartCoroutine(SignInTimeout(request));
 #else
-        if (interactive) SetStatus("Rankings are available in the Android version.");
+        SetStatus("Rankings are available in the Android version.");
 #endif
     }
 
@@ -98,14 +128,28 @@ public sealed class PlayGamesService : MonoBehaviour
 
     public void ShowLeaderboard(LeaderboardKind kind)
     {
-        if (!IsAuthenticated) { SetStatus("Sign in before opening rankings."); return; }
-        if (!IsConfigured(kind)) { SetStatus("This ranking is not available yet."); return; }
+        if (!IsAuthenticated) { RankingsPanel.OpenForLeaderboard(kind); return; }
+        if (!IsConfigured(kind)) { SetStatus("This ranking is not available yet."); RankingsPanel.OpenForLeaderboard(kind); return; }
 #if UNITY_ANDROID && !UNITY_EDITOR
-        if (!openingLeaderboard) StartCoroutine(OpenLeaderboardAfterUpload(kind));
+        if (!IsLeaderboardBusy) StartCoroutine(OpenLeaderboardAfterUpload(kind));
+#else
+        SetStatus("Rankings are available in the Android version.");
+        RankingsPanel.OpenForLeaderboard(kind);
 #endif
     }
 
-    private IEnumerator OpenLeaderboardAfterUpload(LeaderboardKind kind)
+    public void ShowAllLeaderboards()
+    {
+        if (!IsAuthenticated) { RankingsPanel.OpenForLeaderboard(null); return; }
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (!IsLeaderboardBusy) StartCoroutine(OpenLeaderboardAfterUpload(null));
+#else
+        SetStatus("Rankings are available in the Android version.");
+        RankingsPanel.OpenForLeaderboard(null);
+#endif
+    }
+
+    private IEnumerator OpenLeaderboardAfterUpload(LeaderboardKind? kind)
     {
         openingLeaderboard = true;
         try
@@ -114,10 +158,23 @@ public sealed class PlayGamesService : MonoBehaviour
             while (flushing) yield return null;
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (!IsAuthenticated) yield break;
-            PlayGamesPlatform.Instance.ShowLeaderboardUI(settings.GetId(kind), status =>
+            IsLeaderboardVisible = true;
+            // A null ID opens Google's built-in list of all leaderboards.
+            try
             {
-                if (this != null && status != UIStatus.Valid) SetStatus("Could not open rankings. Please try again.");
-            });
+                PlayGamesPlatform.Instance.ShowLeaderboardUI(kind.HasValue ? settings.GetId(kind.Value) : null, status =>
+                {
+                    if (this == null) return;
+                    IsLeaderboardVisible = false;
+                    if (status != UIStatus.Valid) SetStatus("Could not open rankings. Please try again.");
+                });
+            }
+            catch (Exception exception)
+            {
+                IsLeaderboardVisible = false;
+                Debug.LogWarning("[PlayGames] Could not open rankings: " + exception.Message);
+                SetStatus("Could not open rankings. Please try again.");
+            }
 #endif
         }
         finally { openingLeaderboard = false; }
@@ -126,7 +183,7 @@ public sealed class PlayGamesService : MonoBehaviour
     public void SubmitScore(LeaderboardKind kind, long value)
     {
         // Guest records stay local. Pending uploads belong to the account that earned them.
-        if (!IsAuthenticated) { Debug.LogWarning($"[PlayGames] Score skipped: not authenticated. Game={kind}, score={value}"); return; }
+        if (!IsAuthenticated) { Debug.Log($"[PlayGames] Local-only score. Game={kind}, score={value}"); return; }
         if (value <= 0) { Debug.Log($"[PlayGames] Score skipped: zero/invalid score. Game={kind}"); return; }
         if (BlockdokuAutoTester.Instance != null && BlockdokuAutoTester.Instance.isTesting) return;
         if (!IsConfigured(kind)) Debug.LogWarning($"[PlayGames] Score queued without configured leaderboard. Game={kind}");
@@ -220,5 +277,16 @@ public sealed class PlayGamesService : MonoBehaviour
 
     private void SetStatus(string status) { Status = status; Changed?.Invoke(); }
     private void SetScoreStatus(string status) { ScoreStatus = status; Changed?.Invoke(); }
-    private void OnDestroy() { if (Instance == this) Instance = null; }
+    private void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        if (Instance == this) Instance = null;
+    }
+}
+
+[Serializable]
+public sealed class PlayGamesLoginChoice
+{
+    // Records that the introduction was dismissed, not permission to log in automatically.
+    public bool hasChosen;
 }

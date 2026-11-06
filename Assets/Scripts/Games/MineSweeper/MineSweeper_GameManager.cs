@@ -22,6 +22,8 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
     private float timer;
     private int remainingMines;
     private MineSweeperDifficulty currentDifficulty;
+    public MineSweeperDifficulty CurrentDifficulty => currentDifficulty;
+    public bool HasSelectedDifficulty { get; private set; }
 
     public event Action<int> OnScoreChanged;
     public event Action<int> OnBestScoreChanged;
@@ -42,7 +44,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     void Update()
     {
-        if (IsGameStarted && !IsGameOver && !GameNavigation.IsTransitioning)
+        if (IsGameStarted && !IsGameOver && !GameNavigation.IsTransitioning && !RankingOverlay.IsOpen)
         {
             timer += Time.deltaTime;
             uiManager.UpdateTimer(timer);
@@ -51,6 +53,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     public void ShowDifficultySelection()
     {
+        HasSelectedDifficulty = false;
         LoadBestTimes();
         uiManager.ShowDifficultySelection(true);
         uiManager.ShowGameOverPanel(false);
@@ -64,6 +67,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
 
     public void StartGame(MineSweeperDifficulty difficulty)
     {
+        HasSelectedDifficulty = true;
         currentDifficulty = difficulty;
         IsGameOver = false;
         IsGameStarted = false;
@@ -90,6 +94,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
         }
 
         remainingMines = mines;
+        uiManager.UpdateHeaderBestTime(GetBestTimeForCurrentDifficulty());
         uiManager.UpdateMineCount(remainingMines);
         uiManager.UpdateTimer(timer);
         uiManager.ShowDifficultySelection(false);
@@ -175,6 +180,7 @@ public class MineSweeper_GameManager : MonoBehaviour, IGameManager
         {
             SaveManager.SaveData("MineSweeper.json", data);
             OnBestScoreChanged?.Invoke((int)timer); // Using time as "best score" for MS
+            uiManager.UpdateHeaderBestTime(timer);
         }
     }
 

@@ -6,7 +6,10 @@ using UnityEngine.SceneManagement;
 
 public class TitleManager : MonoBehaviour
 {
-    public void ShowRankings() => RankingsPanel.Open();
+    public void ShowRankings()
+    {
+        if (PlayGamesService.Instance != null) PlayGamesService.Instance.ShowAllLeaderboards();
+    }
     //싱글게임 -> 새게임 버튼
     public void BlockdokuBtnOnClicked()
     {

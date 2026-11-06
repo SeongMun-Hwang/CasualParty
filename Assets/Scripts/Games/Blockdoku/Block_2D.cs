@@ -144,7 +144,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (GameNavigation.IsTransitioning || GameManager_2D.Instance == null || GameManager_2D.Instance.IsGameOver() ||
+        if (GameNavigation.IsTransitioning || RankingOverlay.IsOpen || GameManager_2D.Instance == null || GameManager_2D.Instance.IsGameOver() ||
             BlockSpawner_2D.Instance == null || !BlockSpawner_2D.Instance.TryBeginDrag(this)) return;
         isDragging = true;
         originalPosition = rectTransform.anchoredPosition;
@@ -173,6 +173,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnDrag(PointerEventData eventData)
     {
+        if (RankingOverlay.IsOpen) { CancelDrag(); return; }
         if (!isDragging) return;
         // Apply movement with multiplier
         rectTransform.anchoredPosition += (eventData.delta / canvas.scaleFactor) * dragMovementMultiplier;
@@ -191,6 +192,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
     public void OnPointerUp(PointerEventData eventData)
     {
+        if (RankingOverlay.IsOpen) { CancelDrag(); return; }
         if (!isDragging) return;
         isDragging = false;
         BlockSpawner_2D.Instance.EndDrag(this);

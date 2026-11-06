@@ -63,7 +63,7 @@ public class MineSweeper_Cell : BaseCell, IPointerDownHandler, IPointerUpHandler
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (MineSweeper_GameManager.Instance.IsGameOver || GameNavigation.IsTransitioning) return;
+        if (MineSweeper_GameManager.Instance.IsGameOver || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
 
         isPointerDown = true;
         pointerDownTime = Time.time;
@@ -84,6 +84,7 @@ public class MineSweeper_Cell : BaseCell, IPointerDownHandler, IPointerUpHandler
 
     public void OnPointerUp(PointerEventData eventData)
     {
+        if (RankingOverlay.IsOpen) { OnPointerExit(eventData); return; }
         if (!isPointerDown || MineSweeper_GameManager.Instance.IsGameOver) return;
 
         isPointerDown = false;
@@ -126,7 +127,7 @@ public class MineSweeper_Cell : BaseCell, IPointerDownHandler, IPointerUpHandler
     private IEnumerator LongPressRoutine()
     {
         while (isPointerDown && !longPressTriggered &&
-               !MineSweeper_GameManager.Instance.IsGameOver && !GameNavigation.IsTransitioning)
+               !MineSweeper_GameManager.Instance.IsGameOver && !GameNavigation.IsTransitioning && !RankingOverlay.IsOpen)
         {
             if (Time.time - pointerDownTime >= longPressDuration)
             {

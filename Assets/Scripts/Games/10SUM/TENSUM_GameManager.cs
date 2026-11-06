@@ -42,7 +42,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
 
     void Update()
     {
-        if (isGameOver || GameNavigation.IsTransitioning) return;
+        if (isGameOver || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
 
         timer -= Time.deltaTime;
         uiManager.UpdateTimer(timer);

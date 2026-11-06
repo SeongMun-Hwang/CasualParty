@@ -4,9 +4,9 @@
 
 공식 Google Play Games Unity SDK 2.3.0을 Assets/GooglePlayGames에 추가했다. 기존 External Dependency Manager는 덮어쓰지 않았다. 원본: https://github.com/playgameservices/play-games-plugin-for-unity/releases/tag/v2.3.0
 
-타이틀의 RANKING에서 Google Play Games 로그인과 게임별 순위 화면을 연다. Android 기기에서 설정이 완료되면 앱 시작 시 자동 로그인을 시도하며, 실패·취소 후 버튼으로 다시 로그인할 수 있다. 게스트도 게임을 플레이하고 로컬 기록을 저장할 수 있다. 로그인은 Google Play Games 프로필 인증이며 별도 서버 계정이나 클라우드 저장 동기화를 구현한 것은 아니다.
+타이틀의 RANKING에서 Google Play Games 로그인과 게임별 순위 화면을 연다. 2026-11-06부터 앱 시작 시 인증을 직접 호출하지 않는다. 최초 실행에는 로그인 또는 로컬 플레이 선택을 제공하며, 이후에는 RANKING의 로그인 버튼을 선택해야 앱의 순위 기능을 활성화한다. 이전에 로그인했더라도 다음 앱 실행에서 자동 활성화하지 않는다. 게스트도 게임을 플레이하고 로컬 기록을 저장할 수 있다. 로그인은 Google Play Games 프로필 인증이며 별도 서버 계정이나 클라우드 저장 동기화를 구현한 것은 아니다.
 
-현재 프로젝트에는 실제 게임 서비스 프로젝트 ID와 리더보드 ID가 제공되지 않았다. 임의 ID는 넣지 않았으며 아래 설정 전에는 실제 로그인·순위 이용을 완료할 수 없다.
+게임 서비스 ID와 블록도쿠·10SUM 리더보드 ID는 설정되어 있다. 지뢰찾기 리더보드 ID는 아직 비어 있으며, 미설정 순위 버튼은 비활성화된다. Google SDK 자체의 플랫폼 백그라운드 인증과 앱의 선택 로그인은 구분해야 한다. 자세한 한계와 동작은 [선택 로그인 설명](QA/OptionalPlayGamesLogin.md)을 참고한다.
 
 ## Play Console
 

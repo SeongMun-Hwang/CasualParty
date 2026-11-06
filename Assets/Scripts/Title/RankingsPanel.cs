@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,10 +9,26 @@ public sealed class RankingsPanel : MonoBehaviour
     private TextMeshProUGUI status;
     private Button signIn;
     private PlayGamesService service;
+    private bool loginChoice;
+    private LeaderboardKind? requestedKind;
+    private bool minesweeperSelection;
+    private bool openAfterSignIn;
+    private static RankingsPanel current;
+    public static bool IsOpen => current != null;
+    private readonly List<KeyValuePair<Button, LeaderboardKind>> boardButtons = new List<KeyValuePair<Button, LeaderboardKind>>();
 
     public static void Open()
     {
-        if (FindFirstObjectByType<RankingsPanel>() != null) return;
+        if (PlayGamesService.Instance != null) PlayGamesService.Instance.ShowAllLeaderboards();
+    }
+
+    public static void OpenLoginChoice() => Open(true, null, false);
+    public static void OpenForLeaderboard(LeaderboardKind? kind) => Open(false, kind, false);
+    public static void OpenMinesweeper() => Open(false, null, true);
+
+    private static void Open(bool offerLogin, LeaderboardKind? kind, bool minesweeper)
+    {
+        if (current != null) return;
         var root = new GameObject("Rankings", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         var canvas = root.GetComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -20,7 +37,12 @@ public sealed class RankingsPanel : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1080, 1920);
         scaler.matchWidthOrHeight = 0.5f;
-        root.AddComponent<RankingsPanel>().Build();
+        var panel = root.AddComponent<RankingsPanel>();
+        current = panel;
+        panel.loginChoice = offerLogin;
+        panel.requestedKind = kind;
+        panel.minesweeperSelection = minesweeper;
+        panel.Build();
     }
 
     private void Build()
@@ -42,23 +64,48 @@ public sealed class RankingsPanel : MonoBehaviour
         layout.childControlHeight = true;
         layout.childControlWidth = true;
         layout.childForceExpandHeight = false;
-        AddText(panel.transform, font, "RANKINGS", 54, 80);
-        status = AddText(panel.transform, font, "Sign in to use rankings.", 30, 110);
-        signIn = AddButton(panel.transform, font, "Google Play Games Sign In", () => service?.SignIn());
-        AddBoard(panel.transform, font, "Blockdoku", LeaderboardKind.Blockdoku);
-        AddBoard(panel.transform, font, "10SUM", LeaderboardKind.TenSum);
-        AddBoard(panel.transform, font, "Minesweeper - Beginner", LeaderboardKind.MineSweeperBeginner);
-        AddBoard(panel.transform, font, "Minesweeper - Intermediate", LeaderboardKind.MineSweeperIntermediate);
-        AddBoard(panel.transform, font, "Minesweeper - Advanced", LeaderboardKind.MineSweeperAdvanced);
-        AddButton(panel.transform, font, "Close", () => Destroy(gameObject));
         service = PlayGamesService.Instance;
+        if (loginChoice)
+        {
+            AddText(panel.transform, font, "GOOGLE PLAY GAMES", 48, 100);
+            AddText(panel.transform, font,
+                "Sign in to view rankings and submit scores using your Play Games profile.\n\nYou can play all games without signing in. Local progress stays on this device.", 34, 380);
+            AddButton(panel.transform, font, "Sign in and use rankings", () =>
+            {
+                service?.SignIn();
+                Destroy(gameObject);
+            });
+            AddButton(panel.transform, font, "Play without signing in", Close);
+            return;
+        }
+        string heading = minesweeperSelection ? "MINESWEEPER RANKINGS" : requestedKind.HasValue ? NameFor(requestedKind.Value) + " RANKING" : "ALL RANKINGS";
+        AddText(panel.transform, font, heading, 42, 100);
+        AddText(panel.transform, font, "Sign in to view Google Play Games rankings.\nYou can keep playing without signing in.", 32, 150);
+        status = AddText(panel.transform, font, "Sign in to use rankings.", 30, 140);
+        signIn = AddButton(panel.transform, font, "Google Play Games Sign In", () =>
+        {
+            openAfterSignIn = !minesweeperSelection;
+            service?.SignIn();
+        });
+        if (minesweeperSelection)
+        {
+            AddBoard(panel.transform, font, "Beginner", LeaderboardKind.MineSweeperBeginner);
+            AddBoard(panel.transform, font, "Intermediate", LeaderboardKind.MineSweeperIntermediate);
+            AddBoard(panel.transform, font, "Advanced", LeaderboardKind.MineSweeperAdvanced);
+        }
+        AddButton(panel.transform, font, "Close", Close);
         if (service != null) service.Changed += Refresh;
         Refresh();
     }
 
     private void AddBoard(Transform parent, TMP_FontAsset font, string label, LeaderboardKind kind)
     {
-        AddButton(parent, font, label, () => service?.ShowLeaderboard(kind));
+        var button = AddButton(parent, font, label, () =>
+        {
+            HideForNativeUI();
+            service?.ShowLeaderboard(kind);
+        });
+        boardButtons.Add(new KeyValuePair<Button, LeaderboardKind>(button, kind));
     }
 
     private void Refresh()
@@ -66,6 +113,48 @@ public sealed class RankingsPanel : MonoBehaviour
         status.text = service != null ? service.Status : "Rankings are not available yet.";
         if (service != null && !string.IsNullOrEmpty(service.ScoreStatus)) status.text += "\n" + service.ScoreStatus;
         signIn.interactable = service != null && !service.IsSigningIn && !service.IsAuthenticated;
+        foreach (var item in boardButtons)
+            item.Key.interactable = service != null && service.IsAuthenticated && service.IsConfigured(item.Value);
+        if (service != null && service.IsAuthenticated && openAfterSignIn)
+        {
+            openAfterSignIn = false;
+            HideForNativeUI();
+            if (requestedKind.HasValue) service.ShowLeaderboard(requestedKind.Value);
+            else service.ShowAllLeaderboards();
+        }
+    }
+
+    private void HideForNativeUI()
+    {
+        if (service != null) service.Changed -= Refresh;
+        if (current == this) current = null;
+        Destroy(gameObject);
+    }
+
+    public static string NameFor(LeaderboardKind kind)
+    {
+        switch (kind)
+        {
+            case LeaderboardKind.Blockdoku: return "BLOCKDOKU";
+            case LeaderboardKind.TenSum: return "10SUM";
+            case LeaderboardKind.MineSweeperBeginner: return "MINESWEEPER - BEGINNER";
+            case LeaderboardKind.MineSweeperIntermediate: return "MINESWEEPER - INTERMEDIATE";
+            default: return "MINESWEEPER - ADVANCED";
+        }
+    }
+
+    public static bool TryClose()
+    {
+        var panel = current;
+        if (panel == null) return false;
+        panel.Close();
+        return true;
+    }
+
+    private void Close()
+    {
+        if (loginChoice) service?.ContinueAsGuest();
+        Destroy(gameObject);
     }
 
     private static Button AddButton(Transform parent, TMP_FontAsset font, string label, Action action)
@@ -105,5 +194,9 @@ public sealed class RankingsPanel : MonoBehaviour
         rect.offsetMax = Vector2.zero;
     }
 
-    private void OnDestroy() { if (service != null) service.Changed -= Refresh; }
+    private void OnDestroy()
+    {
+        if (service != null) service.Changed -= Refresh;
+        if (current == this) current = null;
+    }
 }

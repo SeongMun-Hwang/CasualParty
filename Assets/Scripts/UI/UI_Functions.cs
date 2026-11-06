@@ -34,6 +34,8 @@ public class UI_Functions : MonoBehaviour
 
     private void HandleBackInput()
     {
+        if (RankingsPanel.TryClose()) return;
+        if (GameMenu.TryClose()) return;
         string currentScene = SceneManager.GetActiveScene().name;
 
         if (currentScene == "Title")

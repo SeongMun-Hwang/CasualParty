@@ -139,9 +139,9 @@ public class SettingsUI : MonoBehaviour
         isUpdatingUI = true; // Slider.value 변경 시 이벤트 중복 발생 방지
 
         // 슬라이더 값 업데이트
-        if (bgmVolumeSlider != null) bgmVolumeSlider.value = SettingsManager.Instance.BgmVolume;
-        if (sfxVolumeSlider != null) sfxVolumeSlider.value = SettingsManager.Instance.SfxVolume;
-        if (vibrationVolumeSlider != null) vibrationVolumeSlider.value = SettingsManager.Instance.VibrationValue;
+        if (bgmVolumeSlider != null) bgmVolumeSlider.SetValueWithoutNotify(SettingsManager.Instance.BgmVolume);
+        if (sfxVolumeSlider != null) sfxVolumeSlider.SetValueWithoutNotify(SettingsManager.Instance.SfxVolume);
+        if (vibrationVolumeSlider != null) vibrationVolumeSlider.SetValueWithoutNotify(SettingsManager.Instance.VibrationValue);
 
         // 버튼 아이콘 업데이트
         if (bgmMuteButtonIcon != null) bgmMuteButtonIcon.sprite = SettingsManager.Instance.BgmMute ? bgmOff : bgmOn;

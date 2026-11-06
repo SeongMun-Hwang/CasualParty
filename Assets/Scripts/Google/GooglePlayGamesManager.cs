@@ -1,6 +1,6 @@
 using UnityEngine;
 // Compatibility component for scenes that already reference this script.
-// PlayGamesService owns automatic authentication and prevents concurrent requests.
+// PlayGamesService starts authentication only after an explicit user action.
 public class GooglePlayGamesManager : MonoBehaviour
 {
     public void SignIn()

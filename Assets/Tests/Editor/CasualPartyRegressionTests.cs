@@ -15,6 +15,263 @@ public sealed class CasualPartyRegressionTests
     private int boundaryCount;
     private Action pendingBoundary;
 
+    [TestCase("Title", LeaderboardTarget.All)]
+    [TestCase("Blockdoku_2D", LeaderboardTarget.Blockdoku)]
+    [TestCase("10SUM", LeaderboardTarget.TenSum)]
+    [TestCase("MineSweeper", LeaderboardTarget.MineSweeper)]
+    public void SceneRankingButtonsHaveCorrectScopeAndHeaderPlacement(string sceneName, LeaderboardTarget target)
+    {
+        var scene = EditorSceneManager.OpenScene("Assets/Scenes/" + sceneName + ".unity");
+        LeaderboardButton ranking = null;
+        foreach (var root in scene.GetRootGameObjects())
+        {
+            var candidate = root.GetComponentInChildren<LeaderboardButton>(true);
+            if (candidate != null) ranking = candidate;
+        }
+        Assert.NotNull(ranking);
+        Assert.AreEqual(target, ranking.target);
+        var button = ranking.GetComponent<UnityEngine.UI.Button>();
+        Assert.AreEqual(1, button.onClick.GetPersistentEventCount());
+        Assert.AreSame(ranking, button.onClick.GetPersistentTarget(0));
+        Assert.AreEqual("Open", button.onClick.GetPersistentMethodName(0));
+        var rect = (RectTransform)ranking.transform;
+        Assert.AreEqual(Vector2.one, rect.anchorMax);
+        Assert.AreEqual(Vector2.one, rect.anchorMin);
+        Assert.GreaterOrEqual(rect.rect.width, 128);
+        Assert.AreEqual(sceneName == "Title" ? "Canvas" : "TopUIPanel", ranking.transform.parent.name);
+        if (sceneName != "Title")
+        {
+            var header = ranking.transform.parent;
+            var safeArea = header.GetComponent<SafeAreaTopPanel>();
+            Assert.NotNull(safeArea);
+            Assert.AreEqual(16, safeArea.topPadding);
+            Assert.AreEqual(-16, ((RectTransform)header).anchoredPosition.y);
+            Assert.IsNull(header.Find("BackToTitleBtn"));
+            Assert.IsNull(header.Find("ResetBtn"));
+            var menu = header.GetComponentInParent<GameMenu>();
+            Assert.NotNull(menu);
+            Assert.False(menu.popup.activeSelf);
+            var card = menu.popup.transform.Find("SettingsCard");
+            Assert.IsNull(card.Find("Title"));
+            Assert.IsNull(card.Find("Restart"));
+            var settings = menu.popup.GetComponent<SettingsUI>();
+            Assert.NotNull(settings.bgmVolumeSlider);
+            Assert.NotNull(settings.sfxVolumeSlider);
+            Assert.NotNull(settings.vibrationVolumeSlider);
+            var popupButtons = menu.popup.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+            foreach (var actionName in new[] { "BackToTitleBtn", "ResetBtn" })
+            {
+                var action = Array.Find(popupButtons, b => b.name == actionName);
+                Assert.NotNull(action);
+                Assert.AreSame(menu, action.onClick.GetPersistentTarget(0));
+                Assert.AreEqual(actionName == "ResetBtn" ? "Restart" : "ReturnToTitle", action.onClick.GetPersistentMethodName(0));
+                Assert.Less(((RectTransform)action.transform).anchoredPosition.y, settings.vibrationVolumeSlider.GetComponent<RectTransform>().anchoredPosition.y);
+            }
+            var settingsRect = (RectTransform)header.Find("SettingBtn");
+            Assert.Greater(settingsRect.anchoredPosition.x, rect.anchoredPosition.x);
+            TextMeshProUGUIForHeaderCheck(sceneName, header);
+            var buttons = Array.FindAll(header.GetComponentsInChildren<UnityEngine.UI.Button>(), b => b.transform.parent == header);
+            for (int i = 0; i < buttons.Length; i++)
+                for (int j = i + 1; j < buttons.Length; j++)
+                {
+                    var a = (RectTransform)buttons[i].transform;
+                    var b = (RectTransform)buttons[j].transform;
+                    float ax = a.anchorMin.x * 1080 + a.anchoredPosition.x;
+                    float bx = b.anchorMin.x * 1080 + b.anchoredPosition.x;
+                    Assert.GreaterOrEqual(Mathf.Abs(ax - bx), (a.rect.width + b.rect.width) / 2, "Header buttons overlap");
+                }
+        }
+    }
+
+    [TestCase(1080, 1920, 0)]
+    [TestCase(1080, 2340, 100)]
+    [TestCase(1440, 3200, 160)]
+    [TestCase(720, 1600, 80)]
+    public void HeaderAnchorsFollowCameraSafeAreaAtDifferentResolutions(int width, int height, int cameraInset)
+    {
+        SafeAreaTopPanel.GetTopAnchors(new Rect(0, 0, width, height - cameraInset), new Rect(0, 0, width, height), out var min, out var max);
+        Assert.AreEqual(0, min.x);
+        Assert.AreEqual(1, max.x);
+        Assert.AreEqual(height - cameraInset, max.y * height, .01f);
+        Assert.AreEqual(min.y, max.y);
+        // Padding and the existing first-row inset place the score strictly below the safe top.
+        float scale = width / 1080f;
+        float scoreTop = max.y * height - (16 + 85 - 60) * scale;
+        Assert.Less(scoreTop, height - cameraInset);
+    }
+
+    [Test]
+    public void HeaderSafeAreaUsesCanvasViewportAndHandlesUninitializedDimensions()
+    {
+        SafeAreaTopPanel.GetTopAnchors(new Rect(110, 210, 780, 920), new Rect(100, 200, 800, 1000), out var min, out var max);
+        Assert.AreEqual(.0125f, min.x, .0001f);
+        Assert.AreEqual(.9875f, max.x, .0001f);
+        Assert.AreEqual(.93f, max.y, .0001f);
+        SafeAreaTopPanel.GetTopAnchors(Rect.zero, Rect.zero, out min, out max);
+        Assert.AreEqual(new Vector2(0, 1), min);
+        Assert.AreEqual(Vector2.one, max);
+    }
+
+    private static void TextMeshProUGUIForHeaderCheck(string sceneName, Transform header)
+    {
+        TMPro.TextMeshProUGUI score;
+        TMPro.TextMeshProUGUI best;
+        if (sceneName == "Blockdoku_2D")
+        {
+            var ui = header.GetComponentInParent<UIManager_2D>(); score = ui.scoreText; best = ui.bestScoreText;
+        }
+        else if (sceneName == "10SUM")
+        {
+            var ui = UnityEngine.Object.FindFirstObjectByType<UIManager>(); score = ui.scoreText; best = ui.bestScoreMainGameText;
+        }
+        else
+        {
+            var ui = UnityEngine.Object.FindFirstObjectByType<MineSweeper_UIManager>(); score = ui.mineCountText; best = ui.headerBestTimeText;
+        }
+        var scoreSlot = sceneName == "MineSweeper" ? (RectTransform)score.transform.parent : score.rectTransform;
+        Assert.AreEqual(new Vector2(.5f, 1), scoreSlot.anchorMin);
+        Assert.AreEqual(-85, scoreSlot.anchoredPosition.y);
+        if (sceneName != "MineSweeper")
+        {
+            var bestSlot = (RectTransform)best.transform.parent;
+            Assert.AreEqual(1, bestSlot.anchorMin.x);
+            Assert.AreEqual(-225, bestSlot.anchoredPosition.y);
+            Assert.AreEqual(UnityEngine.TextAnchor.MiddleRight, bestSlot.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>().childAlignment);
+        }
+        else
+        {
+            Assert.AreEqual(1, best.rectTransform.anchorMin.x);
+            Assert.AreEqual(-225, best.rectTransform.anchoredPosition.y);
+            Assert.AreEqual(TMPro.TextAlignmentOptions.MidlineRight, best.alignment);
+        }
+    }
+
+    [TestCase("Blockdoku_2D")]
+    [TestCase("10SUM")]
+    [TestCase("MineSweeper")]
+    public void HeaderIconsStayNextToChangingValuesWithinAvailableWidth(string sceneName)
+    {
+        var scene = EditorSceneManager.OpenScene("Assets/Scenes/" + sceneName + ".unity");
+        var groups = new System.Collections.Generic.List<UnityEngine.UI.HorizontalLayoutGroup>();
+        foreach (var root in scene.GetRootGameObjects())
+            foreach (var group in root.GetComponentsInChildren<UnityEngine.UI.HorizontalLayoutGroup>(true))
+                if (group.name == "BestScoreDisplay" || group.name == "TimerDisplay" || group.name == "MineCountDisplay") groups.Add(group);
+        Assert.AreEqual(sceneName == "Blockdoku_2D" ? 1 : 2, groups.Count);
+        foreach (var group in groups)
+        {
+            var icon = group.transform.GetChild(0).GetComponent<UnityEngine.UI.Image>();
+            var text = group.transform.GetChild(1).GetComponent<TMPro.TextMeshProUGUI>();
+            Assert.NotNull(icon); Assert.NotNull(text);
+            Assert.AreSame(icon.transform.parent, text.transform.parent);
+            Assert.AreEqual(2, group.transform.childCount);
+            var rect = (RectTransform)group.transform;
+            rect.anchorMin = rect.anchorMax = new Vector2(.5f, 1);
+            foreach (float width in new[] { 300f, 330f, 440f })
+            {
+                rect.sizeDelta = new Vector2(width, 110);
+                foreach (var value in new[] { "1", "100", "2147483647" })
+                {
+                    text.text = value;
+                    text.ForceMeshUpdate();
+                    UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+                    text.ForceMeshUpdate();
+                    UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(rect);
+                    var imageRect = (RectTransform)icon.transform;
+                    float iconRight = imageRect.anchoredPosition.x + imageRect.rect.xMax;
+                    float textLeft = text.rectTransform.anchoredPosition.x + text.rectTransform.rect.xMin;
+                    float textRight = text.rectTransform.anchoredPosition.x + text.rectTransform.rect.xMax;
+                    Assert.AreEqual(12, textLeft - iconRight, .1f, sceneName + "/" + group.name + "/" + value);
+                    Assert.LessOrEqual(textRight, width + .1f);
+                    Assert.GreaterOrEqual(imageRect.anchoredPosition.x + imageRect.rect.xMin, -.1f);
+                    if (group.childAlignment == TextAnchor.MiddleRight) Assert.AreEqual(width, textRight, .1f);
+                }
+            }
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator MuteButtonsDoNotTintOrCloseTheSettingsPanel()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = SceneManager.LoadSceneAsync("10SUM");
+        while (!load.isDone) yield return null;
+        yield return null;
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        menu.Open();
+        yield return null;
+        var card = menu.popup.transform.Find("SettingsCard").gameObject;
+        var backdropImage = menu.popup.GetComponent<UnityEngine.UI.Image>();
+        var cardImage = card.GetComponent<UnityEngine.UI.Image>();
+        Color backdropTint = backdropImage.canvasRenderer.GetColor();
+        Color cardTint = cardImage.canvasRenderer.GetColor();
+        var settings = menu.popup.GetComponent<SettingsUI>();
+        var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+        foreach (var surface in new[] { menu.popup, card })
+            UnityEngine.EventSystems.ExecuteEvents.Execute(surface, pointer, UnityEngine.EventSystems.ExecuteEvents.pointerEnterHandler);
+        var buttons = new[] { settings.bgmMuteButton, settings.sfxMuteButton, settings.vibrationMuteButton };
+        for (int channel = 0; channel < buttons.Length; channel++)
+        {
+            for (int repeat = 0; repeat < 2; repeat++)
+            {
+                bool wasMuted = channel == 0 ? SettingsManager.Instance.BgmMute : channel == 1 ? SettingsManager.Instance.SfxMute : SettingsManager.Instance.VibrationMute;
+                var button = buttons[channel];
+                UnityEngine.EventSystems.ExecuteEvents.Execute(button.gameObject, pointer, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+                UnityEngine.EventSystems.ExecuteEvents.Execute(button.gameObject, pointer, UnityEngine.EventSystems.ExecuteEvents.pointerUpHandler);
+                UnityEngine.EventSystems.ExecuteEvents.ExecuteHierarchy(button.gameObject, pointer, UnityEngine.EventSystems.ExecuteEvents.pointerClickHandler);
+                yield return new WaitForSecondsRealtime(.15f);
+                Assert.AreEqual(!wasMuted, channel == 0 ? SettingsManager.Instance.BgmMute : channel == 1 ? SettingsManager.Instance.SfxMute : SettingsManager.Instance.VibrationMute);
+                Assert.True(menu.popup.activeInHierarchy);
+                Assert.True(card.activeInHierarchy);
+                Assert.AreEqual(backdropTint, backdropImage.canvasRenderer.GetColor(), "Backdrop changed tint while muting");
+                Assert.AreEqual(cardTint, cardImage.canvasRenderer.GetColor(), "Card changed tint while muting");
+            }
+        }
+        menu.Close();
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator RankingOverlayPausesTenSumTimerAndRestoresItOnClose()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var operation = SceneManager.LoadSceneAsync("10SUM");
+        while (!operation.isDone) yield return null;
+        yield return null;
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        menu.Open();
+        Assert.True(GameMenu.IsOpen);
+        var settings = menu.popup.GetComponent<SettingsUI>();
+        settings.bgmVolumeSlider.value = .35f;
+        Assert.AreEqual(.35f, SettingsManager.Instance.BgmVolume, .001f);
+        settings.bgmMuteButton.onClick.Invoke();
+        Assert.True(SettingsManager.Instance.BgmMute);
+        settings.bgmMuteButton.onClick.Invoke();
+        Assert.False(SettingsManager.Instance.BgmMute);
+        Assert.AreEqual(.35f, SettingsManager.Instance.BgmVolume, .001f);
+        var field = typeof(TENSUM_GameManager).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
+        float paused = (float)field.GetValue(TENSUM_GameManager.Instance);
+        yield return null;
+        yield return null;
+        Assert.AreEqual(paused, (float)field.GetValue(TENSUM_GameManager.Instance));
+        Assert.True(GameMenu.TryClose());
+        Assert.False(GameMenu.IsOpen);
+        RankingsPanel.OpenForLeaderboard(LeaderboardKind.TenSum);
+        Assert.True(RankingOverlay.IsOpen);
+        var timerField = typeof(TENSUM_GameManager).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
+        float before = (float)timerField.GetValue(TENSUM_GameManager.Instance);
+        yield return null;
+        yield return null;
+        Assert.AreEqual(before, (float)timerField.GetValue(TENSUM_GameManager.Instance));
+        RankingsPanel.TryClose();
+        yield return null;
+        yield return null;
+        Assert.False(RankingOverlay.IsOpen);
+        Assert.Less((float)timerField.GetValue(TENSUM_GameManager.Instance), before);
+        yield return new ExitPlayMode();
+    }
+
     [Test]
     public void AdThresholdKeepsDueCountUntilAdIsConsumed()
     {
@@ -69,7 +326,6 @@ public sealed class CasualPartyRegressionTests
         string title = File.ReadAllText("Assets/Scenes/Title.unity");
         StringAssert.DoesNotContain("TwoZeroFourEight", title);
         StringAssert.DoesNotContain("2048Btn", title);
-        StringAssert.Contains("ShowRankings", title);
     }
 
     [Test]
@@ -270,6 +526,46 @@ public sealed class CasualPartyRegressionTests
             yield return null;
             completed(Success ? ScoreUploadResult.Confirmed() : ScoreUploadResult.Failed("Simulated server failure."));
         }
+    }
+
+    [UnityTest]
+    public IEnumerator GuestChoiceNeverEnablesProfileAccessOrScoreUploads()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var service = PlayGamesService.Instance;
+        Assert.NotNull(service);
+        for (int frame = 0; frame < 3; frame++) yield return null;
+        Assert.False(service.IsAuthenticated);
+        Assert.False(service.IsSigningIn);
+        Assert.AreEqual("NotAttempted", service.LastAuthenticationResult);
+        service.ContinueAsGuest();
+        Assert.True(SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json").hasChosen);
+        service.SubmitScore(LeaderboardKind.TenSum, 30);
+        service.ShowLeaderboard(LeaderboardKind.TenSum);
+        service.RetryPendingScores();
+        for (int frame = 0; frame < 3; frame++) yield return null;
+        Assert.False(service.IsAuthenticated);
+        Assert.AreEqual("NotAttempted", service.LastAuthenticationResult);
+        Assert.False(SaveManager.Exists("pendingScores.json"), "Guest play must not enqueue or upload scores.");
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator FirstRunLoginPromptCanBeDismissedWithoutAuthentication()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        RankingsPanel.OpenLoginChoice();
+        yield return null;
+        Assert.NotNull(UnityEngine.Object.FindFirstObjectByType<RankingsPanel>());
+        Assert.True(RankingsPanel.TryClose());
+        yield return null;
+        Assert.IsNull(UnityEngine.Object.FindFirstObjectByType<RankingsPanel>());
+        Assert.True(SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json").hasChosen);
+        Assert.False(PlayGamesService.Instance.IsAuthenticated);
+        Assert.AreEqual("NotAttempted", PlayGamesService.Instance.LastAuthenticationResult);
+        yield return new ExitPlayMode();
     }
 
     private IEnumerator LoadBlockdoku()
