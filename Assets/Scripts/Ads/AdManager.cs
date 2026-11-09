@@ -15,6 +15,7 @@ public class AdManager : MonoBehaviour
 
     public static AdManager Instance { get; private set; }
     public bool IsShowingAd { get; private set; }
+    public float BannerHeightPixels { get; private set; }
     private readonly AdFrequency frequency = new AdFrequency();
     private InterstitialAd interstitial;
     private BannerView banner;
@@ -115,6 +116,13 @@ public class AdManager : MonoBehaviour
         banner?.Destroy();
         var size = AdSize.GetPortraitAnchoredAdaptiveBannerAdSizeWithWidth(AdSize.FullWidth);
         banner = new BannerView(_bannerAdUnitId, size, AdPosition.Bottom);
+        BannerHeightPixels = 0;
+        var requestedBanner = banner;
+        banner.OnBannerAdLoaded += () =>
+        {
+            if (this != null && banner == requestedBanner)
+                BannerHeightPixels = Mathf.Max(0, requestedBanner.GetHeightInPixels());
+        };
         banner.LoadAd(new AdRequest());
     }
 

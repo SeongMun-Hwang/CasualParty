@@ -203,7 +203,7 @@ public class MineSweeper_Cell : BaseCell, IPointerDownHandler, IPointerUpHandler
     {
         if (SettingsManager.Instance != null)
         {
-            SettingsManager.Instance.Vibrate();
+            SettingsManager.Instance.VibrateShort();
         }
     }
 

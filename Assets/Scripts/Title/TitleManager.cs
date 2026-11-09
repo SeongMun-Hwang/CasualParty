@@ -6,6 +6,7 @@ using UnityEngine.SceneManagement;
 
 public class TitleManager : MonoBehaviour
 {
+    public void StackTowerBtnOnClicked() => GameNavigation.Load("StackTower");
     public void ShowRankings()
     {
         if (PlayGamesService.Instance != null) PlayGamesService.Instance.ShowAllLeaderboards();

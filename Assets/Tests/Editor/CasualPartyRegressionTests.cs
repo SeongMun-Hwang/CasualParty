@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.Reflection;
+using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -14,6 +15,515 @@ public sealed class CasualPartyRegressionTests
     [SerializeField] private string testDirectory;
     private int boundaryCount;
     private Action pendingBoundary;
+
+    [UnityTest]
+    public IEnumerator SignedInRankingRequestsSkipLoginChoiceAndDoNotOfferSignIn()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        if (RankingsPanel.IsOpen) { RankingsPanel.TryClose(); yield return null; }
+        var service = PrepareScoreUploadTest(new FakeScoreUploader(), new ScoreOutbox());
+        // The Editor cannot present Google's native screen, but must show a platform notice rather than a login choice.
+        RankingsPanel.OpenLoginChoice();
+        yield return new WaitForSecondsRealtime(.1f);
+        var panel = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        Assert.NotNull(panel);
+        Assert.False(panel.GetComponentsInChildren<UnityEngine.UI.Button>().Any(b => b.name == "Play as guest" || b.name == "Sign in with Play Games"));
+        Assert.True(panel.GetComponentsInChildren<TMPro.TextMeshProUGUI>().Any(t => t.text == "ALL GAMES"));
+        RankingsPanel.TryClose(); yield return null;
+        Assert.True(service.IsAuthenticated, "Closing ranking information must not change an authenticated user into a guest.");
+        RankingsPanel.OpenMinesweeper();
+        yield return new WaitForSecondsRealtime(.1f);
+        panel = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        Assert.True(panel.GetComponentsInChildren<TMPro.TextMeshProUGUI>().Any(t => t.text == "ALL GAMES"));
+        Assert.False(panel.GetComponentsInChildren<UnityEngine.UI.Button>().Any(b => b.name == "Sign in with Play Games"));
+        RankingsPanel.TryClose(); yield return null;
+        service.ContinueAsGuest();
+        RankingsPanel.OpenForLeaderboard(LeaderboardKind.TenSum);
+        yield return new WaitForSecondsRealtime(.1f);
+        panel = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        Assert.True(panel.GetComponentsInChildren<UnityEngine.UI.Button>().Any(b => b.name == "Sign in with Play Games" && b.interactable));
+        RankingsPanel.TryClose(); yield return null;
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator RankingPopupScrollsLongStatusAndKeepsCloseButtonAccessible()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var service = PlayGamesService.Instance;
+        service.ContinueAsGuest();
+        RankingsPanel.OpenMinesweeper();
+        yield return new WaitForSecondsRealtime(.15f);
+        var popup = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        Assert.NotNull(Resources.Load<RankingPopupStyle>("RankingPopupStyle"));
+        typeof(PlayGamesService).GetMethod("SetStatus", BindingFlags.NonPublic | BindingFlags.Instance)
+            .Invoke(service, new object[] { string.Join("\n", Enumerable.Repeat("Unable to connect. Check your connection and try again.", 12)) });
+        yield return new WaitForSecondsRealtime(.15f);
+        var scroll = popup.GetComponentInChildren<UnityEngine.UI.ScrollRect>();
+        Assert.Greater(scroll.content.rect.height, scroll.viewport.rect.height);
+        var close = popup.GetComponentsInChildren<UnityEngine.UI.Button>().Single(b => b.name == "Close");
+        Assert.False(close.transform.IsChildOf(scroll.content));
+        var before = close.transform.position;
+        scroll.verticalNormalizedPosition = 0;
+        yield return new WaitForSecondsRealtime(.1f);
+        Assert.AreEqual(before, close.transform.position);
+        var corners = new Vector3[4]; ((RectTransform)close.transform).GetWorldCorners(corners);
+        Assert.Greater(RectTransformUtility.WorldToScreenPoint(null, corners[0]).y, 0);
+        Assert.Less(RectTransformUtility.WorldToScreenPoint(null, corners[2]).y, Screen.height);
+        close.onClick.Invoke();
+        yield return null;
+        Assert.False(RankingsPanel.IsOpen);
+        yield return new ExitPlayMode();
+    }
+    [SerializeField] private bool restoreArchivedStackTower;
+
+    private AsyncOperation LoadStackTowerForTests()
+    {
+        return EditorSceneManager.LoadSceneAsyncInPlayMode("Assets/Scenes/StackTower.unity", new LoadSceneParameters(LoadSceneMode.Single));
+    }
+
+    private void EnableStackTowerRestartForTests()
+    {
+        var scenes = EditorBuildSettings.scenes;
+        foreach (var scene in scenes)
+            if (scene.path == "Assets/Scenes/StackTower.unity" && !scene.enabled)
+            {
+                restoreArchivedStackTower = true;
+                scene.enabled = true;
+            }
+        EditorBuildSettings.scenes = scenes;
+    }
+
+    [UnityTest]
+    public IEnumerator BlockdokuBorderEffectsStayBoundedAndStopOnResetOrDisable()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadBlockdoku();
+        while (load.MoveNext()) yield return load.Current;
+        var grid = GridManager_2D.Instance;
+        var effect = grid.BorderEffect;
+        Assert.NotNull(effect);
+        int objectCount = grid.symmetryEffectContainer.childCount;
+        var canvas = grid.symmetryEffectContainer.GetComponent<Canvas>();
+        Assert.NotNull(canvas);
+        Assert.AreNotSame(grid.gridParent.GetComponentInParent<Canvas>(), canvas);
+        foreach (string type in new[] { "H", "V", "D1", "D2" })
+        {
+            grid.PlaySymmetryAnimation(type);
+            Assert.AreEqual(1, DG.Tweening.DOTween.TweensByTarget(effect).Count);
+            DG.Tweening.DOTween.Goto(effect, .4f, false);
+            Assert.Greater(effect.ActiveTrailCount, 0);
+            Assert.LessOrEqual(effect.LastEmissionCount, BlockdokuBorderEffect.EmissionBudget);
+            Assert.LessOrEqual(effect.ActiveTrailCount, BlockdokuBorderEffect.TrailCapacity);
+        }
+        for (int i = 0; i < 30; i++)
+        {
+            grid.PlayFullClearAnimation();
+            DG.Tweening.DOTween.Goto(effect, .5f, false);
+            Assert.AreEqual(1, DG.Tweening.DOTween.TweensByTarget(effect).Count);
+            Assert.LessOrEqual(effect.LastEmissionCount, BlockdokuBorderEffect.EmissionBudget);
+        }
+        Assert.AreEqual(objectCount, grid.symmetryEffectContainer.childCount);
+        Assert.False(effect.raycastTarget);
+        grid.PlayFullClearAnimation();
+        for (int frame = 1; frame <= 120; frame++)
+        {
+            DG.Tweening.DOTween.Goto(effect, frame / 60f, false);
+            Assert.LessOrEqual(effect.ActiveTrailCount, BlockdokuBorderEffect.TrailCapacity);
+            Assert.LessOrEqual(effect.LastEmissionCount, BlockdokuBorderEffect.EmissionBudget);
+        }
+        Canvas.ForceUpdateCanvases();
+        var mesh = effect.canvasRenderer.GetMesh();
+        Assert.NotNull(mesh);
+        Assert.Greater(mesh.vertexCount, 8, "Heads and trails must actually be rendered.");
+        Assert.LessOrEqual(mesh.vertexCount, (BlockdokuBorderEffect.TrailCapacity + 2) * 4);
+        Debug.Log($"[Border effect verification] objects={grid.symmetryEffectContainer.childCount}, tweens={DG.Tweening.DOTween.TweensByTarget(effect).Count}, trailStamps={effect.ActiveTrailCount}, vertices={mesh.vertexCount}");
+        DG.Tweening.DOTween.Goto(effect, 5f, false);
+        Assert.False(effect.IsPlaying);
+        Assert.AreEqual(0, effect.ActiveTrailCount);
+        grid.PlaySymmetryAnimation("H");
+        grid.enabled = false;
+        Assert.False(effect.IsPlaying);
+        Assert.AreEqual(0, effect.ActiveTrailCount);
+        grid.enabled = true;
+        grid.PlayFullClearAnimation();
+        GameManager_2D.Instance.StartGame();
+        Assert.False(effect.IsPlaying);
+        Assert.AreEqual(0, effect.ActiveTrailCount);
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator HeaderBackgroundFillsScreenTopWhileContentsRespectSafeArea()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadStackTowerForTests();
+        while (!load.isDone) yield return null;
+        yield return null;
+        var game = StackTowerGame.Instance;
+        var header = game.scoreText.GetComponentInParent<SafeAreaTopPanel>();
+        var panel = (RectTransform)header.transform;
+        var canvas = header.GetComponentInParent<Canvas>();
+        var viewport = canvas.pixelRect;
+        var originalScorePosition = game.scoreText.rectTransform.anchoredPosition;
+        foreach (float inset in new[] { 0f, 80f, 180f })
+        {
+            var safe = new Rect(viewport.xMin + 20, viewport.yMin, viewport.width - 40, viewport.height - inset);
+            SafeAreaTopPanel.GetTopAnchors(safe, viewport, out var min, out var max);
+            panel.anchorMin = min; panel.anchorMax = max;
+            panel.anchoredPosition = new Vector2(0, -header.topPadding);
+            Canvas.ForceUpdateCanvases();
+            header.RefreshBackground();
+            Canvas.ForceUpdateCanvases();
+            Assert.NotNull(header.BackgroundImage);
+            Assert.False(header.GetComponent<UnityEngine.UI.Image>().enabled);
+            Assert.False(header.BackgroundImage.raycastTarget);
+            Assert.AreEqual(originalScorePosition, game.scoreText.rectTransform.anchoredPosition);
+            var corners = new Vector3[4];
+            header.BackgroundImage.rectTransform.GetWorldCorners(corners);
+            Assert.AreEqual(viewport.xMin, RectTransformUtility.WorldToScreenPoint(null, corners[1]).x, .1f);
+            Assert.AreEqual(viewport.yMax, RectTransformUtility.WorldToScreenPoint(null, corners[1]).y, .1f);
+            Assert.AreEqual(viewport.xMax, RectTransformUtility.WorldToScreenPoint(null, corners[2]).x, .1f);
+            game.scoreText.rectTransform.GetWorldCorners(corners);
+            Assert.Less(RectTransformUtility.WorldToScreenPoint(null, corners[1]).y, safe.yMax);
+        }
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator StackTowerBackgroundFollowsAltitudeCoversViewportAndResets()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadStackTowerForTests();
+        while (!load.isDone) yield return null;
+        yield return null;
+        var game = StackTowerGame.Instance;
+        var background = game.background;
+        Assert.NotNull(background);
+        Assert.AreEqual(5, background.zoneSprites.Length);
+        var renderer = background.primaryLayer;
+        Assert.NotNull(renderer.sprite);
+        Assert.Less(renderer.sortingOrder, game.CurrentBlock.GetComponentInChildren<SpriteRenderer>().sortingOrder);
+        float baseline = game.gameCamera.transform.position.y;
+        background.ResetAltitude(baseline);
+        foreach (float aspect in new[] { .45f, .5625f, .75f })
+        {
+            game.gameCamera.aspect = aspect;
+            foreach (float ascent in new[] { -10f, 0f, 24f, 30f, 54f, 60f, 90f, 120f, 240f })
+            {
+                game.gameCamera.transform.position = new Vector3(0, baseline + ascent, -10);
+                background.Refresh();
+                Assert.AreEqual(Mathf.Clamp01(ascent / background.heightToSpace), background.AltitudeProgress, .001f);
+                var bounds = renderer.bounds;
+                float halfHeight = game.gameCamera.orthographicSize;
+                Assert.LessOrEqual(bounds.min.x, -halfHeight * aspect + .001f);
+                Assert.GreaterOrEqual(bounds.max.x, halfHeight * aspect - .001f);
+                Assert.LessOrEqual(bounds.min.y, baseline + ascent - halfHeight + .001f);
+                Assert.GreaterOrEqual(bounds.max.y, baseline + ascent + halfHeight - .001f);
+                Assert.AreEqual(renderer.transform.localScale.x, renderer.transform.localScale.y, .001f);
+                if (background.transitionLayer.enabled)
+                {
+                    Assert.Greater(background.TransitionAmount, 0);
+                    Assert.LessOrEqual(background.TransitionAmount, 1);
+                    Assert.AreEqual(background.TransitionAmount, background.transitionLayer.color.a, .001f);
+                    Assert.AreEqual(background.transitionLayer.transform.localScale.x, background.transitionLayer.transform.localScale.y, .001f);
+                }
+            }
+        }
+        for (int i = 0; i < 5; i++)
+        {
+            background.SetPreview(i / 4f);
+            Assert.AreEqual(i, background.CurrentZoneIndex);
+            Assert.AreSame(background.zoneSprites[i], background.primaryLayer.sprite);
+            Assert.AreEqual(0, background.TransitionAmount);
+            Assert.AreEqual(0, game.Score);
+        }
+        background.SetPreview(.2f);
+        Assert.Greater(background.TransitionAmount, 0);
+        Assert.Less(background.TransitionAmount, 1);
+        background.ClearPreview();
+        Assert.False(background.IsPreviewing);
+        game.StartGame();
+        Assert.AreEqual(0, background.AltitudeProgress, .001f);
+        Assert.AreEqual(0, game.Score);
+        yield return new ExitPlayMode();
+    }
+
+    [TestCase(1080, 270, 0, 1)]
+    [TestCase(1440, 360, 96, 1.333333f)]
+    [TestCase(720, 180, 48, .666667f)]
+    public void StackTowerControlsClearBannerAndBottomSafeArea(float width, float banner, float inset, float scale)
+    {
+        float center = StackTowerGame.GetControlsCenterY(banner, inset, scale, 160, 40);
+        Assert.AreEqual(banner + inset + 40 * scale, (center - 80) * scale, .01f);
+        float fallback = StackTowerGame.GetControlsCenterY(width * 90 / 320, inset, scale, 160, 40);
+        Assert.Greater((fallback - 80) * scale, inset);
+    }
+
+    [UnityTest]
+    public IEnumerator StackTowerRotationHoldsTurnSmoothlyAndStopOnReleasePauseAndDrop()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadStackTowerForTests();
+        while (!load.isDone) yield return null;
+        yield return null;
+        var game = StackTowerGame.Instance;
+        var piece = game.CurrentBlock;
+        var controlsCanvas = game.dropButton.GetComponentInParent<UnityEngine.Canvas>();
+        var dropRect = (RectTransform)game.dropButton.transform;
+        Assert.GreaterOrEqual((dropRect.anchoredPosition.y - dropRect.rect.height * .5f) * controlsCanvas.scaleFactor,
+            Screen.width * 90f / 320f + Screen.safeArea.yMin);
+        Assert.AreEqual(dropRect.anchoredPosition.y, ((RectTransform)game.rotateClockwiseButton.transform).anchoredPosition.y);
+        Assert.Greater(game.statusText.rectTransform.anchoredPosition.y, dropRect.anchoredPosition.y + dropRect.rect.height * .5f);
+        Assert.Less(game.statusBackdrop.GetSiblingIndex(), game.statusText.transform.GetSiblingIndex());
+        Assert.Greater(game.gameCamera.WorldToScreenPoint(new Vector3(0, game.baseTop)).y,
+            (game.statusText.rectTransform.anchoredPosition.y + game.statusText.rectTransform.rect.height * .5f) * controlsCanvas.scaleFactor);
+        game.rotationSpeed = 120;
+        var cw = game.rotateClockwiseButton.GetComponent<StackTowerRotationHold>();
+        var ccw = game.rotateCounterClockwiseButton.GetComponent<StackTowerRotationHold>();
+        var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { pointerId = 1 };
+        float before = piece.Body.rotation;
+        var cells = piece.GetComponentsInChildren<BoxCollider2D>();
+        cw.OnPointerDown(pointer);
+        yield return new WaitForSecondsRealtime(.2f);
+        float turn = Mathf.DeltaAngle(before, piece.Body.rotation);
+        Assert.Less(turn, -3);
+        Assert.Greater(turn, -80);
+        CollectionAssert.AreEqual(cells, piece.GetComponentsInChildren<BoxCollider2D>());
+        cw.OnPointerUp(pointer);
+        float released = piece.Body.rotation;
+        yield return new WaitForSecondsRealtime(.1f);
+        Assert.AreEqual(released, piece.Body.rotation, .01f);
+        ccw.OnPointerDown(pointer);
+        yield return new WaitForSecondsRealtime(.2f);
+        Assert.Greater(Mathf.DeltaAngle(released, piece.Body.rotation), 3);
+        ccw.OnPointerExit(pointer);
+        Assert.False(ccw.IsHeld);
+        // Release near each cardinal orientation, including wraparound at zero.
+        foreach (float angle in new[] { 6f, 84f, 96f, 174f, 186f, 264f, 276f, 354f })
+        {
+            cw.OnPointerDown(pointer);
+            piece.Body.rotation = angle;
+            cw.OnPointerUp(pointer);
+            Assert.AreEqual(0, Mathf.DeltaAngle(Mathf.Round(angle / 90) * 90, piece.Body.rotation), .01f);
+        }
+        cw.OnPointerDown(pointer);
+        piece.Body.rotation = 45;
+        cw.OnPointerUp(pointer);
+        Assert.AreEqual(45, piece.Body.rotation, .01f);
+        game.rotationSnapTolerance = 0;
+        cw.OnPointerDown(pointer);
+        piece.Body.rotation = 86;
+        cw.OnPointerUp(pointer);
+        Assert.AreEqual(86, piece.Body.rotation, .01f);
+        game.rotationSnapTolerance = 10;
+        cw.OnPointerDown(pointer);
+        cw.OnPointerUp(new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { pointerId = 2 });
+        Assert.True(cw.IsHeld);
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        menu.Open();
+        yield return new WaitForSecondsRealtime(.1f);
+        Assert.False(cw.IsHeld);
+        Assert.False(game.CanRotate);
+        Assert.False(game.rotateClockwiseButton.interactable);
+        menu.Close();
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.True(game.CanRotate);
+        Assert.False(cw.IsHeld);
+        cw.OnPointerDown(pointer);
+        float droppedAngle = piece.Body.rotation;
+        Assert.True(game.TryDrop());
+        Assert.AreEqual(droppedAngle, piece.Body.rotation, .01f);
+        Assert.False(cw.IsHeld);
+        Assert.False(game.CanRotate);
+        Assert.False(game.rotateCounterClockwiseButton.interactable);
+        cw.OnPointerDown(pointer);
+        Assert.False(cw.IsHeld);
+        piece.Body.position = new Vector2(12, -5);
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.AreEqual(StackTowerGame.RunState.GameOver, game.State);
+        Assert.AreEqual(0, game.Score);
+        yield return new ExitPlayMode();
+    }
+    [UnityTest]
+    public IEnumerator StackTowerAllowsSideLandingsAndSpeedsUpByHeightUntilAPlacedPieceFallsOut()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadStackTowerForTests();
+        while (!load.isDone) yield return null;
+        yield return null;
+        var game = StackTowerGame.Instance;
+        game.shapePool = new[] { AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/Traditional/O.asset") };
+        game.StartGame();
+        float initialSpeed = game.CurrentMoveSpeed;
+        float firstHeight = 0, firstSpeed = 0;
+        for (int i = 0; i < 3; i++)
+        {
+            game.CurrentBlock.Body.position = new Vector2(i == 1 ? 1.8f : 0, game.CurrentBlock.Body.position.y);
+            Assert.True(game.TryDrop());
+            float deadline = Time.realtimeSinceStartup + 5;
+            while (game.Score <= i && game.State != StackTowerGame.RunState.GameOver && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.AreEqual(i + 1, game.Score);
+            Assert.AreEqual(StackTowerGame.RunState.Moving, game.State);
+            if (i == 0) { firstHeight = game.TowerHeight; firstSpeed = game.CurrentMoveSpeed; Assert.Greater(firstSpeed, initialSpeed); }
+            if (i == 1)
+            {
+                Assert.AreEqual(firstHeight, game.TowerHeight, .04f, "A piece on the foundation beside the tower must be allowed");
+                Assert.AreEqual(firstSpeed, game.CurrentMoveSpeed, .02f, "More score without more height must not increase speed");
+                game.PlacedBlocks[1].Body.rotation = 90;
+            }
+        }
+        Assert.Greater(game.TowerHeight, firstHeight + .5f);
+        Assert.Greater(game.CurrentMoveSpeed, firstSpeed + .1f);
+        Assert.LessOrEqual(game.CurrentMoveSpeed, game.maximumMoveSpeed);
+        game.gameCamera.transform.position = new Vector3(0, 50, -10);
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.AreEqual(StackTowerGame.RunState.Moving, game.State, "Off-camera or rotated blocks must not cause game over");
+        game.PlacedBlocks[1].Body.position = new Vector2(12, -4);
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.AreEqual(StackTowerGame.RunState.GameOver, game.State, "An already placed piece falling below the foundation must end the run");
+        Assert.True(game.gameOverPanel.activeSelf);
+        yield return new ExitPlayMode();
+    }
+
+    [Test]
+    public void StackTowerExcludesDiagonalOnlyPiecesButKeepsConnectedSZShapes()
+    {
+        Assert.False(StackTowerBlock.IsConnectedShape(AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/dot_s.asset")));
+        Assert.False(StackTowerBlock.IsConnectedShape(AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/dot_s_s.asset")));
+        foreach (var name in new[] { "S", "Z", "L", "T" })
+            Assert.True(StackTowerBlock.IsConnectedShape(AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/Traditional/" + name + ".asset")));
+        EditorSceneManager.OpenScene("Assets/Scenes/StackTower.unity");
+        var game = UnityEngine.Object.FindFirstObjectByType<StackTowerGame>();
+        Assert.Greater(game.shapePool.Length, 5);
+        Assert.True(game.shapePool.All(StackTowerBlock.IsConnectedShape));
+        Assert.False(game.shapePool.Any(s => s.name == "dot_s" || s.name == "dot_s_s"));
+    }
+
+    [Test]
+    public void StackTowerCollidersMatchEveryOccupiedBlockdokuCellInAllRotations()
+    {
+        EditorSceneManager.OpenScene("Assets/Scenes/StackTower.unity");
+        var game = UnityEngine.Object.FindFirstObjectByType<StackTowerGame>();
+        var go = new GameObject("Piece geometry test", typeof(Rigidbody2D), typeof(StackTowerBlock));
+        try
+        {
+            var block = go.GetComponent<StackTowerBlock>(); block.cellSprite = game.blockPrefab.cellSprite; block.grip = game.blockPrefab.grip;
+            foreach (var data in game.shapePool)
+                for (int rotation = 0; rotation < 4; rotation++)
+                {
+                    block.Configure(data, rotation, game.cellSize, Color.cyan);
+                    var shape = data.GetShape(rotation);
+                    var colliders = go.GetComponentsInChildren<BoxCollider2D>();
+                    Assert.IsNull(go.GetComponent<Collider2D>(), "A bounding box would incorrectly fill concave gaps");
+                    Assert.AreEqual(shape.Count, colliders.Length);
+                    Assert.AreEqual(shape.Count, block.CellCount);
+                    Vector2 min = shape[0], max = shape[0];
+                    foreach (var cell in shape) { min = Vector2.Min(min, cell); max = Vector2.Max(max, cell); }
+                    var center = (min + max) * .5f;
+                    for (int x = (int)min.x; x <= max.x; x++)
+                        for (int y = (int)min.y; y <= max.y; y++)
+                        {
+                            var expected = new Vector2Int(x, y);
+                            bool hasCell = colliders.Any(c => Vector2.Distance(c.transform.localPosition, (expected - center) * game.cellSize) < .001f);
+                            Assert.AreEqual(shape.Contains(expected), hasCell, data.name + "/" + rotation + "/" + expected);
+                        }
+                    foreach (var collider in colliders)
+                    {
+                        Assert.AreEqual(Vector2.one * game.cellSize, collider.size);
+                        Assert.AreSame(block.Body, collider.attachedRigidbody);
+                    }
+                }
+        }
+        finally { UnityEngine.Object.DestroyImmediate(go); }
+    }
+
+    [Test]
+    public void StackTowerIsArchivedButKeepsItsSceneAndSharedSettings()
+    {
+        Assert.True(Array.Exists(EditorBuildSettings.scenes, s => !s.enabled && s.path == "Assets/Scenes/StackTower.unity"));
+        var title = EditorSceneManager.OpenScene("Assets/Scenes/Title.unity");
+        UnityEngine.UI.Button entry = null;
+        foreach (var root in title.GetRootGameObjects())
+            foreach (var button in root.GetComponentsInChildren<UnityEngine.UI.Button>(true))
+                if (button.name == "StackTowerBtn") entry = button;
+        Assert.NotNull(entry);
+        Assert.False(entry.gameObject.activeSelf);
+        Assert.AreEqual("StackTowerBtnOnClicked", entry.onClick.GetPersistentMethodName(0));
+        var scene = EditorSceneManager.OpenScene("Assets/Scenes/StackTower.unity");
+        var game = UnityEngine.Object.FindFirstObjectByType<StackTowerGame>();
+        Assert.NotNull(game.blockPrefab);
+        Assert.NotNull(game.dropButton);
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        Assert.AreEqual(GameMenuPrefabTools.PrefabPath, PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(menu.popup));
+        Assert.NotNull(game.scoreText.GetComponentInParent<SafeAreaTopPanel>());
+    }
+
+    [UnityTest]
+    public IEnumerator StackTowerScoresStableFloorsPausesAndEndsOnAMissedDrop()
+    {
+        EnableStackTowerRestartForTests();
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadStackTowerForTests();
+        while (!load.isDone) yield return null;
+        yield return null;
+        var game = StackTowerGame.Instance;
+        game.shapePool = new[] {
+            AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/Traditional/O.asset"),
+            AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/dot_s.asset"),
+            AssetDatabase.LoadAssetAtPath<BlockArray>("Assets/ScriptableObjects/BlockArrays/dot_s_s.asset")
+        };
+        game.StartGame();
+        Assert.NotNull(game.CurrentBlock);
+        for (int floor = 1; floor <= 3; floor++)
+        {
+            Assert.AreEqual("O", game.CurrentBlock.ShapeData.name, "Runtime filtering must also reject diagonal assets added to the Inspector pool");
+            game.CurrentBlock.Body.position = new Vector2(0, game.CurrentBlock.Body.position.y);
+            Assert.True(game.TryDrop());
+            Assert.False(game.TryDrop(), "Repeated taps must not drop multiple blocks");
+            float deadline = Time.realtimeSinceStartup + 5;
+            while (game.Score < floor && game.State != StackTowerGame.RunState.GameOver && Time.realtimeSinceStartup < deadline) yield return null;
+            Assert.AreEqual(floor, game.Score, "A centered block must land and score exactly one floor");
+            Assert.AreEqual(floor, game.BestScore);
+            Assert.AreEqual(floor, game.PlacedBlocks.Count);
+        }
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>();
+        menu.Open();
+        yield return null;
+        var pausedPosition = game.CurrentBlock.Body.position;
+        yield return new WaitForSecondsRealtime(.2f);
+        Assert.AreEqual(pausedPosition, game.CurrentBlock.Body.position);
+        Assert.False(game.TryDrop());
+        Assert.False(game.PlacedBlocks[0].Body.simulated);
+        menu.Close();
+        yield return null;
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.AreEqual(StackTowerGame.RunState.Moving, game.State);
+        Assert.True(game.PlacedBlocks[0].Body.simulated, "Physics must resume after the popup closes");
+        game.CurrentBlock.Body.position = new Vector2(12, game.CurrentBlock.Body.position.y);
+        Assert.True(game.TryDrop());
+        float endDeadline = Time.realtimeSinceStartup + 5;
+        while (game.State != StackTowerGame.RunState.GameOver && Time.realtimeSinceStartup < endDeadline) yield return null;
+        Assert.AreEqual(StackTowerGame.RunState.GameOver, game.State);
+        Assert.AreEqual(3, game.Score);
+        Assert.True(game.gameOverPanel.activeSelf);
+        Assert.AreEqual(3, SaveManager.LoadData<StackTowerGame.Record>("StackTower.json").bestFloors);
+        game.RestartGame();
+        float restartDeadline = Time.realtimeSinceStartup + 5;
+        while ((ReferenceEquals(StackTowerGame.Instance, game) || StackTowerGame.Instance == null || StackTowerGame.Instance.CurrentBlock == null) && Time.realtimeSinceStartup < restartDeadline) yield return null;
+        Assert.AreEqual(0, StackTowerGame.Instance.Score);
+        Assert.AreEqual(3, StackTowerGame.Instance.BestScore);
+        Assert.AreEqual(StackTowerGame.RunState.Moving, StackTowerGame.Instance.State);
+        yield return new ExitPlayMode();
+    }
 
     [Test]
     public void SharedGameMenuAssetKeepsActionsAndSettingsInsideThePrefab()
@@ -259,7 +769,7 @@ public sealed class CasualPartyRegressionTests
     }
 
     [UnityTest]
-    public IEnumerator RankingOverlayPausesTenSumTimerAndRestoresItOnClose()
+    public IEnumerator TenSumSettingsKeepTimerRunningWhileRankingsPauseAndTimeoutClosesSettings()
     {
         yield return new EnterPlayMode();
         UseIsolatedSaves();
@@ -278,24 +788,27 @@ public sealed class CasualPartyRegressionTests
         Assert.False(SettingsManager.Instance.BgmMute);
         Assert.AreEqual(.35f, SettingsManager.Instance.BgmVolume, .001f);
         var field = typeof(TENSUM_GameManager).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
-        float paused = (float)field.GetValue(TENSUM_GameManager.Instance);
-        yield return null;
-        yield return null;
-        Assert.AreEqual(paused, (float)field.GetValue(TENSUM_GameManager.Instance));
+        float settingsTime = (float)field.GetValue(TENSUM_GameManager.Instance);
+        yield return new WaitForSecondsRealtime(.15f);
+        Assert.Less((float)field.GetValue(TENSUM_GameManager.Instance), settingsTime);
         Assert.True(GameMenu.TryClose());
         Assert.False(GameMenu.IsOpen);
         RankingsPanel.OpenForLeaderboard(LeaderboardKind.TenSum);
         Assert.True(RankingOverlay.IsOpen);
         var timerField = typeof(TENSUM_GameManager).GetField("timer", BindingFlags.Instance | BindingFlags.NonPublic);
         float before = (float)timerField.GetValue(TENSUM_GameManager.Instance);
-        yield return null;
-        yield return null;
+        yield return new WaitForSecondsRealtime(.15f);
         Assert.AreEqual(before, (float)timerField.GetValue(TENSUM_GameManager.Instance));
         RankingsPanel.TryClose();
-        yield return null;
-        yield return null;
+        yield return new WaitForSecondsRealtime(.15f);
         Assert.False(RankingOverlay.IsOpen);
         Assert.Less((float)timerField.GetValue(TENSUM_GameManager.Instance), before);
+        menu.Open();
+        timerField.SetValue(TENSUM_GameManager.Instance, .03f);
+        yield return new WaitForSecondsRealtime(.2f);
+        Assert.True(TENSUM_GameManager.Instance.IsGameOver());
+        Assert.False(GameMenu.IsOpen);
+        Assert.True(TENSUM_GameManager.Instance.uiManager.gameOverPanel.activeInHierarchy);
         yield return new ExitPlayMode();
     }
 
@@ -436,6 +949,13 @@ public sealed class CasualPartyRegressionTests
     public IEnumerator TearDown()
     {
         if (EditorApplication.isPlaying) yield return new ExitPlayMode();
+        if (restoreArchivedStackTower)
+        {
+            var scenes = EditorBuildSettings.scenes;
+            foreach (var scene in scenes) if (scene.path == "Assets/Scenes/StackTower.unity") scene.enabled = false;
+            EditorBuildSettings.scenes = scenes;
+            restoreArchivedStackTower = false;
+        }
         CleanIsolatedSaves();
     }
 

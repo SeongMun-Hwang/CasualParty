@@ -1,9 +1,12 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 [RequireComponent(typeof(RectTransform))]
 public sealed class SafeAreaTopPanel : MonoBehaviour
 {
     [Min(0)] public float topPadding = 16f;
+    [SerializeField] private Image panelBackground;
+    public Image BackgroundImage => panelBackground;
     private RectTransform panel;
     private Canvas canvas;
     private Rect lastSafeArea;
@@ -15,9 +18,43 @@ public sealed class SafeAreaTopPanel : MonoBehaviour
         panel = (RectTransform)transform;
         canvas = GetComponentInParent<Canvas>();
         Refresh();
+        RefreshBackground();
     }
 
-    private void LateUpdate() => Refresh();
+    private void LateUpdate() { Refresh(); RefreshBackground(); }
+
+    public void RefreshBackground()
+    {
+        if (panel == null) panel = (RectTransform)transform;
+        if (canvas == null) canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+        var source = GetComponent<Image>();
+        if (source == null) return;
+        if (panelBackground == null)
+        {
+            if (!source.enabled) return;
+            var go = new GameObject("Safe Area Background", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(transform, false);
+            go.transform.SetAsFirstSibling();
+            panelBackground = go.GetComponent<Image>();
+        }
+        source.enabled = false;
+        panelBackground.color = source.color;
+        panelBackground.sprite = source.sprite;
+        panelBackground.type = source.type;
+        panelBackground.material = source.material;
+        panelBackground.preserveAspect = source.preserveAspect;
+        panelBackground.raycastTarget = false;
+        var viewport = canvas.rootCanvas.pixelRect;
+        if (viewport.width <= 0 || viewport.height <= 0) return;
+        var uiCamera = canvas.rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.rootCanvas.worldCamera;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(panel, new Vector2(viewport.xMin, viewport.yMax), uiCamera, out var topLeft) ||
+            !RectTransformUtility.ScreenPointToLocalPointInRectangle(panel, new Vector2(viewport.xMax, viewport.yMax), uiCamera, out var topRight)) return;
+        var rect = panelBackground.rectTransform;
+        rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+        rect.offsetMin = new Vector2(topLeft.x - panel.rect.xMin, 0);
+        rect.offsetMax = new Vector2(topRight.x - panel.rect.xMax, topRight.y - panel.rect.yMax);
+    }
 
     private void Refresh()
     {

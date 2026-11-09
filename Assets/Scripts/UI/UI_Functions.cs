@@ -91,6 +91,7 @@ public class UI_Functions : MonoBehaviour
         if (GameManager_2D.Instance != null) GameManager_2D.Instance.GoToTitle();
         else if (TENSUM_GameManager.Instance != null) TENSUM_GameManager.Instance.GoToTitle();
         else if (MineSweeper_GameManager.Instance != null) MineSweeper_GameManager.Instance.GoToTitle();
+        else if (StackTowerGame.Instance != null) StackTowerGame.Instance.GoToTitle();
         else GameNavigation.Load("Title");
     }
 
@@ -99,5 +100,6 @@ public class UI_Functions : MonoBehaviour
         if (GameManager_2D.Instance != null) GameManager_2D.Instance.RestartGame();
         else if (TENSUM_GameManager.Instance != null) TENSUM_GameManager.Instance.RestartGame();
         else if (MineSweeper_GameManager.Instance != null) MineSweeper_GameManager.Instance.RestartGame();
+        else if (StackTowerGame.Instance != null) StackTowerGame.Instance.RestartGame();
     }
 }

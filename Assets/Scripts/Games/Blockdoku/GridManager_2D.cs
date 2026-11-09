@@ -4,7 +4,6 @@ using System.Collections;
 using System.Linq; 
 using UnityEngine.UI;
 using System.IO;
-using DG.Tweening;
 
 using static SavePaths;
 
@@ -45,15 +44,8 @@ public class GridManager_2D : MonoBehaviour
     private Dictionary<Cell_2D, Color> storedOriginalClearPredictColors = new Dictionary<Cell_2D, Color>();
     private Coroutine clearPredictBlinkCoroutine;
 
-    // Optimization: High-Performance Pooling
-    private struct PoolItem
-    {
-        public GameObject go;
-        public RectTransform rt;
-        public Image img;
-        public Vector3 initialScale;
-    }
-    private Stack<PoolItem> symmetryPool = new Stack<PoolItem>();
+    private BlockdokuBorderEffect borderEffect;
+    public BlockdokuBorderEffect BorderEffect => borderEffect;
     private List<Color> _tempColorList = new List<Color>();
     private List<Cell_2D> _tempCellList = new List<Cell_2D>();
     private WaitForSeconds cachedSequentialClearWait;
@@ -82,42 +74,35 @@ public class GridManager_2D : MonoBehaviour
         cachedSequentialClearWait = new WaitForSeconds(clearAnimationSequentialDelay);
     }
 
-    private PoolItem GetSymmetryObject()
+    private bool EnsureBorderEffect()
     {
-        if (symmetryPool.Count > 0)
-        {
-            PoolItem item = symmetryPool.Pop();
-            if (item.img != null) item.img.enabled = true;
-            item.rt.localScale = item.initialScale;
-            return item;
-        }
-        else
-        {
-            GameObject go = Instantiate(symmetryEffectPrefab, symmetryEffectContainer);
-            RectTransform rt = go.GetComponent<RectTransform>();
-            Image img = go.GetComponent<Image>();
-            return new PoolItem { go = go, rt = rt, img = img, initialScale = rt.localScale };
-        }
+        if (borderEffect != null) return true;
+        if (symmetryEffectPrefab == null || symmetryEffectContainer == null) return false;
+        var template = symmetryEffectPrefab.GetComponent<Image>();
+        if (template == null) return false;
+        // Isolate animated geometry so it does not force the board's Canvas to rebatch every frame.
+        if (symmetryEffectContainer.GetComponent<Canvas>() == null) symmetryEffectContainer.gameObject.AddComponent<Canvas>();
+        var go = new GameObject("Border Effect Mesh", typeof(RectTransform), typeof(CanvasRenderer), typeof(BlockdokuBorderEffect));
+        go.layer = symmetryEffectContainer.gameObject.layer;
+        go.transform.SetParent(symmetryEffectContainer, false);
+        var rect = (RectTransform)go.transform;
+        rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        borderEffect = go.GetComponent<BlockdokuBorderEffect>();
+        borderEffect.Configure(template);
+        return true;
     }
 
-    private void ReturnSymmetryObject(PoolItem item)
+    private void OnDisable()
     {
-        if (item.go == null) return;
-        
-        // 정적 Kill 메서드를 사용하여 안전하게 트윈 중지
-        DOTween.Kill(item.rt);
-        DOTween.Kill(item.img);
-        DOTween.Kill(item.go);
-
-        if (item.img != null) item.img.enabled = false;
-        
-        // 화면 밖으로 이동하여 UI Rebuild 방지
-        item.rt.localPosition = new Vector3(10000, 10000, 0); 
-        symmetryPool.Push(item);
+        if (borderEffect != null) borderEffect.Stop();
+        if (shakeCoroutine != null) { StopCoroutine(shakeCoroutine); shakeCoroutine = null; }
+        if (gridParent != null) gridParent.localPosition = originalGridPos;
     }
 
     public void InitializeGrid()
     {
+        if (EnsureBorderEffect()) borderEffect.Stop();
         // Use standard Destroy instead of PoolManager
         foreach (Transform child in gridParent)
         {
@@ -409,7 +394,7 @@ public class GridManager_2D : MonoBehaviour
     {
         if (symmetryEffectPrefab == null || symmetryEffectContainer == null) return;
         if (GameManager_2D.Instance != null && GameManager_2D.Instance.uiManager != null) GameManager_2D.Instance.uiManager.Vibrate();
-        ShakeGrid(GameManager_2D.Instance.combo + 5);
+        ShakeGrid((GameManager_2D.Instance != null ? GameManager_2D.Instance.combo : 0) + 5);
 
         List<Color> colors = GetRandomActiveColors(2);
         if (sourceColors != null && sourceColors.Count > 0)
@@ -430,8 +415,7 @@ public class GridManager_2D : MonoBehaviour
             path1[i] = points[isCW ? (start1 + i) % 8 : (start1 - i + 8) % 8];
             path2[i] = points[isCW ? (start2 + i) % 8 : (start2 - i + 8) % 8];
         }
-        LaunchSymmetryEffect(path1, colors[0], symmetryEffectDuration * 2.5f, true);
-        LaunchSymmetryEffect(path2, colors[1], symmetryEffectDuration * 2.5f, true);
+        if (EnsureBorderEffect()) borderEffect.Play(path1, path2, colors[0], colors[1], symmetryEffectDuration * 2.5f, ghostStepDistance, trailExist);
     }
 
     public void PlaySymmetryAnimation(string type)
@@ -442,65 +426,7 @@ public class GridManager_2D : MonoBehaviour
         bool isReverse = Random.value > 0.5f;
         Vector3[] p1, p2;
         GetSymmetryPaths(type, isReverse, out p1, out p2);
-        LaunchSymmetryEffect(p1, colors[0]);
-        LaunchSymmetryEffect(p2, colors[1]);
-    }
-
-    private void LaunchSymmetryEffect(Vector3[] path, Color color, float? overrideDuration = null, bool isBlinking = false)   
-    {
-        PoolItem item = GetSymmetryObject();
-        RectTransform rt = item.rt;
-        Image img = item.img;
-
-        // Ensure we don't use Color.clear which results in black trails
-        Color effectColor = (color == Color.clear) ? Color.white : color;
-        if (img != null) img.color = effectColor;
-        rt.localPosition = path[0];
-
-        float totalDist = 0f;
-        for (int i = 0; i < path.Length - 1; i++) totalDist += Vector3.Distance(path[i], path[i + 1]);
-
-        float duration = overrideDuration ?? symmetryEffectDuration;
-        Sequence seq = DOTween.Sequence();
-        seq.SetTarget(item.go);
-        seq.SetLink(item.go);
-        Vector2 lastGhostPos = path[0];
-
-        for (int i = 0; i < path.Length - 1; i++)
-        {
-            Vector3 end = path[i + 1];
-            float segDist = Vector3.Distance(path[i], end);
-            seq.Append(rt.DOLocalMove(end, (segDist / totalDist) * duration).SetEase(Ease.Linear).OnUpdate(() => {
-                Vector2 currentPos = rt.localPosition;
-                float distanceMoved = Vector2.Distance(currentPos, lastGhostPos);
-                if (distanceMoved >= ghostStepDistance)
-                {
-                    int segments = Mathf.FloorToInt(distanceMoved / ghostStepDistance);
-                    for (int j = 1; j <= segments; j++) CreateTrailGhost(Vector2.Lerp(lastGhostPos, currentPos, (float)j / segments), effectColor);
-                    lastGhostPos = currentPos;
-                }
-            }));
-        }
-        seq.SetEase(Ease.OutQuad).OnComplete(() => {
-            rt.DOScale(0f, 0.2f).SetLink(item.go).OnComplete(() => ReturnSymmetryObject(item));
-        });
-    }
-
-    private void CreateTrailGhost(Vector2 pos, Color color)
-    {
-        PoolItem item = GetSymmetryObject();
-        RectTransform rt = item.rt;
-        Image img = item.img;
-
-        rt.localPosition = pos;
-        if (img != null) 
-        {
-            Color c = (color == Color.clear) ? Color.white : color;
-            c.a = 1f;
-            img.color = c;
-            img.DOFade(0f, trailExist).SetLink(item.go);
-        }
-        rt.DOScale(0f, trailExist).SetLink(item.go).SetEase(Ease.InQuad).OnComplete(() => ReturnSymmetryObject(item));
+        if (EnsureBorderEffect()) borderEffect.Play(p1, p2, colors[0], colors[1], symmetryEffectDuration, ghostStepDistance, trailExist);
     }
 
     private List<Color> GetRandomActiveColors(int count)

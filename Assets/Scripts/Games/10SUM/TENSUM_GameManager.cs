@@ -42,7 +42,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
 
     void Update()
     {
-        if (isGameOver || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
+        if (isGameOver || GameNavigation.IsTransitioning || RankingOverlay.IsRankingOpen) return;
 
         timer -= Time.deltaTime;
         uiManager.UpdateTimer(timer);
@@ -83,6 +83,7 @@ public class TENSUM_GameManager : MonoBehaviour, IGameManager
     {
         if (isGameOver) return;
         isGameOver = true;
+        GameMenu.TryClose();
         
         if (score > bestScore)
         {

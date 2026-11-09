@@ -34,6 +34,12 @@ public static class CasualButtonStyleTools
             var popup = button.GetComponentInParent<GameMenuPopup>(true);
             if (popup != null && GameMenuPrefabTools.IsSharedInstance(popup.gameObject)) continue;
             if (difficultyButtons.Contains(button)) continue;
+            if (button.name == "RotateCounterClockwiseBtn" || button.name == "RotateClockwiseBtn")
+            {
+                var rotationIcon = Style(button, Load("Assets/Sprites/CartoonGUI/Repeat.png"));
+                rotationIcon.transform.localScale = new Vector3(button.name == "RotateCounterClockwiseBtn" ? -1 : 1, 1, 1);
+                continue;
+            }
             string icon = null;
             if (button.GetComponent<LeaderboardButton>() != null) icon = White("Basic/Ranking");
             else if (button.name == "SettingBtn") icon = "Assets/Sprites/CartoonGUI/Settings.png";

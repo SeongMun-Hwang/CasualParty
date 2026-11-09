@@ -85,6 +85,47 @@ public class SettingsManager : MonoBehaviour
         }
     }
 
+    public void VibrateShort()
+    {
+        if (settings.vibrationMute || settings.vibrationValue <= 0) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // A key-tap haptic gives brief feedback without Handheld.Vibrate's device-defined long buzz.
+        // The View API also respects Android's system touch-feedback setting.
+        var requestedSettings = settings;
+        try
+        {
+            using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+            {
+                if (activity == null) return;
+                activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
+                {
+                    if (requestedSettings.vibrationMute || requestedSettings.vibrationValue <= 0) return;
+                    try
+                    {
+                        using (var currentPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                        using (var currentActivity = currentPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                        {
+                            if (currentActivity == null) return;
+                            using (var window = currentActivity.Call<AndroidJavaObject>("getWindow"))
+                            {
+                                if (window == null) return;
+                                using (var view = window.Call<AndroidJavaObject>("getDecorView"))
+                                using (var feedback = new AndroidJavaClass("android.view.HapticFeedbackConstants"))
+                                    view?.Call<bool>("performHapticFeedback", feedback.GetStatic<int>("KEYBOARD_TAP"));
+                            }
+                        }
+                    }
+                    catch (AndroidJavaException e) { Debug.LogWarning("Short haptic unavailable: " + e.Message); }
+                }));
+            }
+        }
+        catch (AndroidJavaException e) { Debug.LogWarning("Short haptic unavailable: " + e.Message); }
+#elif UNITY_IOS && !UNITY_EDITOR
+        Vibrate();
+#endif
+    }
+
     public void Vibrate()
     {
         // Check both mute toggle and slider value

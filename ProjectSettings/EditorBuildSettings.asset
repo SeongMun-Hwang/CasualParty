@@ -17,6 +17,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/MineSweeper.unity
     guid: 6b33d71248c21be4382ebb082ee82092
+  - enabled: 0
+    path: Assets/Scenes/StackTower.unity
+    guid: fd4a29935f8119241a938baa862ee088
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

@@ -27,6 +27,17 @@ public sealed class PlayGamesService : MonoBehaviour
     private bool openingLeaderboard;
     public bool IsLeaderboardVisible { get; private set; }
     public bool IsLeaderboardBusy => openingLeaderboard || IsLeaderboardVisible;
+    public bool SupportsNativeLeaderboards
+    {
+        get
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
