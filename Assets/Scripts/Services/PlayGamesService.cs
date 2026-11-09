@@ -23,10 +23,13 @@ public sealed class PlayGamesService : MonoBehaviour
     private bool flushing;
     private float nextRetry;
     private int authenticationRequest;
+    private IPlayGamesAuthenticationClient authenticationClient = new PlayGamesAuthenticationClient();
+    private bool hasLeaderboardRequest;
+    private LeaderboardKind? requestedLeaderboard;
     private ILeaderboardScoreUploader scoreUploader = new LeaderboardScoreUploader();
     private bool openingLeaderboard;
     public bool IsLeaderboardVisible { get; private set; }
-    public bool IsLeaderboardBusy => openingLeaderboard || IsLeaderboardVisible;
+    public bool IsLeaderboardBusy => openingLeaderboard || IsLeaderboardVisible || (hasLeaderboardRequest && IsSigningIn);
     public bool SupportsNativeLeaderboards
     {
         get
@@ -55,10 +58,12 @@ public sealed class PlayGamesService : MonoBehaviour
         SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    // The native SDK may authenticate its platform identity independently.
-    // This app does not access that identity or enable ranking uploads until SignIn is chosen.
-    private void Start() => OfferLoginChoice();
-
+    private void Start()
+    {
+        var choice = SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json");
+        if (authenticationClient.IsAvailable && (!choice.hasChosen || choice.rankingsEnabled)) BeginAuthentication(false);
+        else OfferLoginChoice();
+    }
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => OfferLoginChoice();
 
     private void OfferLoginChoice()
@@ -72,6 +77,7 @@ public sealed class PlayGamesService : MonoBehaviour
     {
         SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true });
         authenticationRequest++;
+        hasLeaderboardRequest = false;
         IsSigningIn = false;
         IsAuthenticated = false;
         playerId = null;
@@ -84,44 +90,53 @@ public sealed class PlayGamesService : MonoBehaviour
 
     public void SignIn()
     {
-        SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true });
-        BeginUserSignIn();
+        SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true, rankingsEnabled = true });
+        BeginAuthentication(true);
     }
 
-    private void BeginUserSignIn()
+    private void BeginAuthentication(bool manual)
     {
         if (IsSigningIn || IsAuthenticated) return;
-#if UNITY_ANDROID && !UNITY_EDITOR
-        var platformSettings = PlayGamesSettings.LoadInstance();
-        if (platformSettings == null || string.IsNullOrWhiteSpace(platformSettings.AppId))
-        {
-            SetStatus("Rankings are not available yet.");
-            return;
-        }
+        if (!authenticationClient.IsAvailable) { SetStatus("Rankings are available in the Android version."); return; }
         IsSigningIn = true;
         LastAuthenticationResult = "Pending";
-        if (Debug.isDebugBuild) PlayGamesPlatform.DebugLogEnabled = true;
-        Debug.Log($"[PlayGames] Authentication started. Flow=manual, appId={platformSettings.AppId}, package={Application.identifier}");
-        SetStatus("Signing in...");
         int request = ++authenticationRequest;
-        Action<SignInStatus> callback = result =>
+        SetStatus(manual ? "Signing in..." : "Checking Play Games sign-in...");
+        Debug.Log("[PlayGames] Authentication started. Flow=" + (manual ? "manual" : "automatic-result"));
+        try
         {
-            if (this == null || request != authenticationRequest) return;
-            IsSigningIn = false;
-            LastAuthenticationResult = result.ToString();
-            if (result == SignInStatus.Success) Debug.Log("[PlayGames] Authentication succeeded.");
-            else Debug.LogWarning($"[PlayGames] Authentication failed. Status={result}, code={(int)result}, flow=manual. Check the installed signing certificate and PGS tester access; this status alone does not identify the cause.");
-            IsAuthenticated = result == SignInStatus.Success;
-            playerId = IsAuthenticated ? PlayGamesPlatform.Instance.GetUserId() : null;
-            PlayerName = IsAuthenticated ? PlayGamesPlatform.Instance.GetUserDisplayName() : string.Empty;
-            SetStatus(IsAuthenticated ? "Signed in as " + PlayerName : "Sign-in did not complete. You can try again.");
-            if (IsAuthenticated) Flush();
-        };
-        PlayGamesPlatform.Instance.ManuallyAuthenticate(callback);
-        StartCoroutine(SignInTimeout(request));
-#else
-        SetStatus("Rankings are available in the Android version.");
-#endif
+            authenticationClient.Authenticate(manual, result => CompleteAuthentication(request, result));
+            if (IsSigningIn && request == authenticationRequest) StartCoroutine(SignInTimeout(request));
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("[PlayGames] Authentication unavailable: " + exception.Message);
+            CompleteAuthentication(request, new PlayGamesAuthenticationResult { status = "Unavailable" });
+        }
+    }
+
+    private void CompleteAuthentication(int request, PlayGamesAuthenticationResult result)
+    {
+        if (this == null || request != authenticationRequest) return;
+        IsSigningIn = false;
+        LastAuthenticationResult = result?.status ?? "Unavailable";
+        IsAuthenticated = result != null && result.success && !string.IsNullOrEmpty(result.playerId);
+        playerId = IsAuthenticated ? result.playerId : null;
+        PlayerName = IsAuthenticated ? result.playerName ?? string.Empty : string.Empty;
+        bool navigate = hasLeaderboardRequest;
+        var board = requestedLeaderboard;
+        hasLeaderboardRequest = false;
+        if (IsAuthenticated)
+            SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true, rankingsEnabled = true });
+        SetStatus(IsAuthenticated ? "Signed in as " + PlayerName : "Sign-in did not complete. You can try again.");
+        if (IsAuthenticated) Flush();
+        // A ranking panel may already have opened the native UI in response to Changed.
+        if (navigate && !IsLeaderboardBusy)
+        {
+            if (IsAuthenticated) { if (board.HasValue) ShowLeaderboard(board.Value); else ShowAllLeaderboards(); }
+            else RankingsPanel.OpenForLeaderboard(board);
+        }
+        else if (!IsAuthenticated) OfferLoginChoice();
     }
 
     private IEnumerator SignInTimeout(int request)
@@ -129,16 +144,22 @@ public sealed class PlayGamesService : MonoBehaviour
         yield return new WaitForSecondsRealtime(30f);
         if (IsSigningIn && request == authenticationRequest)
         {
+            CompleteAuthentication(request, new PlayGamesAuthenticationResult { status = "Timeout" });
             authenticationRequest++;
-            IsSigningIn = false;
-            LastAuthenticationResult = "Timeout";
-            Debug.LogWarning("[PlayGames] Authentication timed out.");
-            SetStatus("Sign-in timed out. Please try again.");
         }
     }
 
+    private bool CheckExistingSignInForRanking(LeaderboardKind? kind)
+    {
+        if (IsAuthenticated || !authenticationClient.IsAvailable) return false;
+        hasLeaderboardRequest = true;
+        requestedLeaderboard = kind;
+        BeginAuthentication(false);
+        return true;
+    }
     public void ShowLeaderboard(LeaderboardKind kind)
     {
+        if (CheckExistingSignInForRanking(kind)) return;
         if (!IsAuthenticated) { RankingsPanel.OpenForLeaderboard(kind); return; }
         if (!IsConfigured(kind)) { SetStatus("This ranking is not available yet."); RankingsPanel.OpenForLeaderboard(kind); return; }
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -151,6 +172,7 @@ public sealed class PlayGamesService : MonoBehaviour
 
     public void ShowAllLeaderboards()
     {
+        if (CheckExistingSignInForRanking(null)) return;
         if (!IsAuthenticated) { RankingsPanel.OpenForLeaderboard(null); return; }
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (!IsLeaderboardBusy) StartCoroutine(OpenLeaderboardAfterUpload(null));
@@ -298,6 +320,6 @@ public sealed class PlayGamesService : MonoBehaviour
 [Serializable]
 public sealed class PlayGamesLoginChoice
 {
-    // Records that the introduction was dismissed, not permission to log in automatically.
     public bool hasChosen;
+    public bool rankingsEnabled;
 }

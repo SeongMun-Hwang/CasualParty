@@ -16,6 +16,119 @@ public sealed class CasualPartyRegressionTests
     private int boundaryCount;
     private Action pendingBoundary;
 
+    private sealed class FakeAuthenticationClient : IPlayGamesAuthenticationClient
+    {
+        public bool IsAvailable => true;
+        public int AutomaticCalls, ManualCalls;
+        private Action<PlayGamesAuthenticationResult> callback;
+        public void Authenticate(bool manual, Action<PlayGamesAuthenticationResult> completed)
+        {
+            if (manual) ManualCalls++; else AutomaticCalls++;
+            callback = completed;
+        }
+        public void Complete(bool success)
+        {
+            var completed = callback; callback = null;
+            completed(new PlayGamesAuthenticationResult { success = success, status = success ? "Success" : "SignInRequired", playerId = success ? "sdk-account" : null, playerName = success ? "SDK Nickname" : null });
+        }
+    }
+
+    private FakeAuthenticationClient UseAuthenticationClient(PlayGamesService service)
+    {
+        var client = new FakeAuthenticationClient();
+        typeof(PlayGamesService).GetField("authenticationClient", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(service, client);
+        return client;
+    }
+
+    [UnityTest]
+    public IEnumerator ExistingSdkLoginOpensRankingWithoutManualAuthentication()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        if (RankingsPanel.IsOpen) { RankingsPanel.TryClose(); yield return null; }
+        var service = PlayGamesService.Instance;
+        service.ContinueAsGuest();
+        var client = UseAuthenticationClient(service);
+        service.ShowLeaderboard(LeaderboardKind.TenSum);
+        Assert.AreEqual(1, client.AutomaticCalls);
+        Assert.AreEqual(0, client.ManualCalls);
+        Assert.True(service.IsSigningIn);
+        Assert.False(RankingsPanel.IsOpen, "Do not show a login guide before checking SDK authentication.");
+        client.Complete(true);
+        yield return new WaitForSecondsRealtime(.1f);
+        Assert.True(service.IsAuthenticated);
+        Assert.AreEqual("SDK Nickname", service.PlayerName);
+        Assert.True(SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json").rankingsEnabled);
+        var panel = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        Assert.False(panel.GetComponentsInChildren<UnityEngine.UI.Button>().Any(b => b.name == "Sign in with Play Games"));
+        Assert.AreEqual(0, client.ManualCalls);
+        RankingsPanel.TryClose(); yield return null;
+        service.ShowAllLeaderboards();
+        Assert.AreEqual(1, client.AutomaticCalls, "Reuse the synchronized session.");
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator MissingSdkLoginOffersManualSignInOnlyAfterUserChoosesIt()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        if (RankingsPanel.IsOpen) { RankingsPanel.TryClose(); yield return null; }
+        var service = PlayGamesService.Instance;
+        service.ContinueAsGuest();
+        var client = UseAuthenticationClient(service);
+        service.ShowAllLeaderboards(); client.Complete(false);
+        yield return new WaitForSecondsRealtime(.1f);
+        Assert.False(service.IsAuthenticated);
+        Assert.AreEqual(0, client.ManualCalls);
+        var panel = UnityEngine.Object.FindFirstObjectByType<RankingsPanel>();
+        panel.GetComponentsInChildren<UnityEngine.UI.Button>().Single(b => b.name == "Sign in with Play Games").onClick.Invoke();
+        Assert.AreEqual(1, client.ManualCalls);
+        client.Complete(true);
+        Assert.True(service.IsAuthenticated);
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator GuestChoiceRejectsLateSdkCallbackAndDisablesStartupRestore()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        if (RankingsPanel.IsOpen) { RankingsPanel.TryClose(); yield return null; }
+        var service = PlayGamesService.Instance;
+        service.ContinueAsGuest();
+        var client = UseAuthenticationClient(service);
+        service.ShowAllLeaderboards();
+        service.ContinueAsGuest();
+        client.Complete(true);
+        Assert.False(service.IsAuthenticated);
+        Assert.AreEqual(string.Empty, service.PlayerName);
+        Assert.False(SaveManager.LoadData<PlayGamesLoginChoice>("playGamesChoice.json").rankingsEnabled);
+        typeof(PlayGamesService).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(service, null);
+        Assert.AreEqual(1, client.AutomaticCalls);
+        Assert.False(RankingsPanel.IsOpen);
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator PreviouslyEnabledRankingsRestoreSdkSessionWithoutManualSignIn()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        if (RankingsPanel.IsOpen) { RankingsPanel.TryClose(); yield return null; }
+        var service = PlayGamesService.Instance;
+        service.ContinueAsGuest();
+        var client = UseAuthenticationClient(service);
+        SaveManager.SaveData("playGamesChoice.json", new PlayGamesLoginChoice { hasChosen = true, rankingsEnabled = true });
+        typeof(PlayGamesService).GetMethod("Start", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(service, null);
+        Assert.AreEqual(1, client.AutomaticCalls);
+        Assert.AreEqual(0, client.ManualCalls);
+        client.Complete(true);
+        Assert.True(service.IsAuthenticated);
+        Assert.False(RankingsPanel.IsOpen, "Session restoration must not automatically open a leaderboard.");
+        yield return new ExitPlayMode();
+    }
+
     [UnityTest]
     public IEnumerator SignedInRankingRequestsSkipLoginChoiceAndDoNotOfferSignIn()
     {

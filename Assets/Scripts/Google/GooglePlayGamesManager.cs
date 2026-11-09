@@ -1,6 +1,6 @@
 using UnityEngine;
 // Compatibility component for scenes that already reference this script.
-// PlayGamesService starts authentication only after an explicit user action.
+// PlayGamesService synchronizes existing SDK sessions; interactive sign-in requires user action.
 public class GooglePlayGamesManager : MonoBehaviour
 {
     public void SignIn()
