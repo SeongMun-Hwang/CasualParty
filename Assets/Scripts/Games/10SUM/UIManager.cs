@@ -47,9 +47,14 @@ public class UIManager : MonoBehaviour
         HandleGameOver(TENSUM_GameManager.Instance.IsGameOver());
     }
 
+    private int displayedSecond = int.MinValue;
     public void UpdateTimer(float timeInSeconds)
     {
         if (timerText == null) return;
+        int second = Mathf.FloorToInt(timeInSeconds);
+        if (displayedSecond == second) return;
+        displayedSecond = second;
+
         int minutes = Mathf.FloorToInt(timeInSeconds / 60);
         int seconds = Mathf.FloorToInt(timeInSeconds % 60);
         timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);

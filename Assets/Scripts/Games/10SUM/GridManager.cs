@@ -21,6 +21,8 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
     private List<Cell> selectedCells = new List<Cell>();
     private Vector2Int dragStartCoords;
     private bool isDragging = false;
+    private Vector2Int lastSelectionEnd;
+    private bool hasSelectionEnd;
 
     private GridLayoutGroup gridLayout;
 
@@ -32,6 +34,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     public void InitializeGrid()
     {
+        hasSelectionEnd = false;
         // Clear existing children
         foreach (Transform child in transform)
         {
@@ -102,6 +105,7 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
     {
         if (TENSUM_GameManager.Instance.IsGameOver() || GameNavigation.IsTransitioning || RankingOverlay.IsOpen) return;
         isDragging = true;
+        hasSelectionEnd = false;
         dragStartCoords = GetCoordsFromPointer(eventData);
         UpdateSelection(dragStartCoords);
     }
@@ -174,6 +178,8 @@ public class GridManager : MonoBehaviour, IPointerDownHandler, IDragHandler, IPo
 
     private void UpdateSelection(Vector2Int endCoords)
     {
+        if (hasSelectionEnd && lastSelectionEnd == endCoords) return;
+        lastSelectionEnd = endCoords; hasSelectionEnd = true;
         ClearSelectedCellsVisual();
         selectedCells.Clear();
 

@@ -39,6 +39,8 @@ public class SettingsUI : MonoBehaviour
         if (vibrationMuteButton != null) vibrationMuteButton.onClick.AddListener(ToggleVibration);
     }
 
+    private void OnDisable() { if (SettingsManager.Instance != null) SettingsManager.Instance.FlushPendingSettings(); }
+
     private void OnEnable()
     {
         // 패널이 켜질 때 현재 매니저 값으로 초기화

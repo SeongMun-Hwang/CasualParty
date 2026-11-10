@@ -66,7 +66,16 @@ public class MineSweeper_UIManager : MonoBehaviour
     public void OnZoomOutDown() { zoomDir = -1; }
     public void OnZoomPointerUp() { zoomDir = 0; }
 
-    public void UpdateTimer(float time) { if (timerText != null) timerText.text = FormatTime(time); }
+    private int displayedSecond = int.MinValue;
+    public void UpdateTimer(float time)
+    {
+        if (timerText == null) return;
+        int second = Mathf.FloorToInt(time);
+        if (displayedSecond == second) return;
+        displayedSecond = second;
+        timerText.text = FormatTime(time);
+    }
+
     public void UpdateMineCount(int count) { if (mineCountText != null) mineCountText.text = "Left : " + count.ToString(); }
     public void ShowDifficultySelection(bool show) { if (difficultyPanel != null) difficultyPanel.SetActive(show); }
 

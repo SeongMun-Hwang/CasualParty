@@ -16,6 +16,119 @@ public sealed class CasualPartyRegressionTests
     private int boundaryCount;
     private Action pendingBoundary;
 
+    private sealed class SaveObservation
+    {
+        public int SettingsWrites, BoardWrites, Notifications;
+        public void Saved(string file) { if (file == "setting.json") SettingsWrites++; if (file == "save.json") BoardWrites++; }
+        public void Changed() => Notifications++;
+    }
+
+    [Test]
+    public void BlockGroupSamplingKeepsActiveVariantsUniformAndSkipsDisabledItems()
+    {
+        var main = ScriptableObject.CreateInstance<BlockArray>();
+        var variant = ScriptableObject.CreateInstance<BlockArray>();
+        var disabled = ScriptableObject.CreateInstance<BlockArray>();
+        var state = UnityEngine.Random.state;
+        try
+        {
+            var group = new BlockSpawner_2D.BlockSpawnGroup
+            {
+                mainBlock = new BlockSpawner_2D.BlockSpawnItem { block = main },
+                variants = new System.Collections.Generic.List<BlockSpawner_2D.BlockSpawnItem>
+                {
+                    new BlockSpawner_2D.BlockSpawnItem { block = variant },
+                    new BlockSpawner_2D.BlockSpawnItem { block = disabled, isActive = false }, null
+                }
+            };
+            UnityEngine.Random.InitState(2917);
+            int mainCount = 0;
+            for (int i = 0; i < 1000; i++)
+            {
+                var chosen = group.GetRandomBlock();
+                Assert.True(chosen == main || chosen == variant);
+                if (chosen == main) mainCount++;
+            }
+            Assert.That(mainCount, Is.InRange(400, 600));
+            group.isActive = false; Assert.IsNull(group.GetRandomBlock());
+        }
+        finally
+        {
+            UnityEngine.Random.state = state;
+            UnityEngine.Object.DestroyImmediate(main); UnityEngine.Object.DestroyImmediate(variant); UnityEngine.Object.DestroyImmediate(disabled);
+        }
+    }
+
+    [UnityTest]
+    public IEnumerator BannerReusesItsViewAcrossScenesAndRecreatesAfterFailure()
+    {
+        yield return new EnterPlayMode(); UseIsolatedSaves();
+        var ads = AdManager.Instance != null ? AdManager.Instance : new GameObject("Test Ads").AddComponent<AdManager>();
+        ads.enabled = false;
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(AdManager).GetField("initialized", flags).SetValue(ads, true);
+        typeof(AdManager).GetField("_enableAds", flags).SetValue(ads, true);
+        typeof(AdManager).GetField("_bannerAdUnitId", flags).SetValue(ads, "editor-test-banner");
+        var bannerField = typeof(AdManager).GetField("banner", flags);
+        ads.LoadBannerAd(); var first = bannerField.GetValue(ads); Assert.NotNull(first);
+        ads.LoadBannerAd(); Assert.AreSame(first, bannerField.GetValue(ads));
+        typeof(AdManager).GetMethod("OnSceneLoaded", flags).Invoke(ads, new object[] { SceneManager.GetActiveScene(), LoadSceneMode.Single });
+        yield return null; yield return null;
+        Assert.AreSame(first, bannerField.GetValue(ads));
+        typeof(AdManager).GetField("bannerFailed", flags).SetValue(ads, true);
+        ads.LoadBannerAd(); Assert.AreNotSame(first, bannerField.GetValue(ads));
+        ads.EnableAds = false;
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator SettingsChangesApplyImmediatelyButSaveOnceAfterIdleAndFlushOnPause()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var settings = SettingsManager.Instance != null ? SettingsManager.Instance : new GameObject("Test Settings").AddComponent<SettingsManager>();
+        settings.FlushPendingSettings();
+        var observations = new SaveObservation();
+        SaveManager.OnSavedForTests += observations.Saved; settings.OnSettingsChanged += observations.Changed;
+        try
+        {
+            for (int i = 1; i <= 100; i++) { settings.BgmVolume = i / 200f; settings.BgmMute = false; }
+            Assert.AreEqual(.5f, settings.BgmVolume); Assert.AreEqual(0, observations.SettingsWrites);
+            int before = observations.Notifications; settings.BgmVolume = .5f; settings.BgmMute = false;
+            Assert.AreEqual(before, observations.Notifications, "Identical values do not notify or schedule another write.");
+            yield return new WaitForSecondsRealtime(.35f);
+            Assert.AreEqual(1, observations.SettingsWrites); Assert.AreEqual(.5f, SaveManager.LoadData<AudioData>("setting.json").bgmVolume);
+            settings.BgmVolume = .25f; settings.SendMessage("OnApplicationPause", true);
+            Assert.AreEqual(2, observations.SettingsWrites); Assert.AreEqual(.25f, SaveManager.LoadData<AudioData>("setting.json").bgmVolume);
+        }
+        finally { SaveManager.OnSavedForTests -= observations.Saved; settings.OnSettingsChanged -= observations.Changed; }
+        yield return new ExitPlayMode();
+    }
+
+    [UnityTest]
+    public IEnumerator TenSumSkipsSameCellSelectionButStillUpdatesNewDragsAndCellChanges()
+    {
+        yield return new EnterPlayMode(); UseIsolatedSaves();
+        var load = SceneManager.LoadSceneAsync("10SUM"); while (!load.isDone) yield return null;
+        yield return null;
+        var grid = TENSUM_GameManager.Instance.gridManager;
+        var cells = (GameObject[,])typeof(GridManager).GetField("cellObjects", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(grid);
+        var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current)
+            { position = RectTransformUtility.WorldToScreenPoint(null, cells[0, 0].transform.position) };
+        grid.OnPointerDown(pointer);
+        var image = cells[0, 0].GetComponent<UnityEngine.UI.Image>();
+        Assert.AreEqual(grid.highlightColor, image.color);
+        image.color = Color.magenta; grid.OnDrag(pointer);
+        Assert.AreEqual(Color.magenta, image.color, "The same selection must not be repainted.");
+        pointer.position = RectTransformUtility.WorldToScreenPoint(null, cells[0, 1].transform.position); grid.OnDrag(pointer);
+        Assert.AreEqual(grid.highlightColor, image.color);
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>(); menu.Open(); grid.OnDrag(pointer); menu.Close();
+        Assert.AreEqual(Color.white, image.color);
+        grid.OnPointerDown(pointer);
+        Assert.AreEqual(grid.highlightColor, cells[0, 1].GetComponent<UnityEngine.UI.Image>().color);
+        yield return new ExitPlayMode();
+    }
+
     [TestCase(0, 1f, 40)]
     [TestCase(1, 1f, 55)]
     [TestCase(4, 1f, 100)]
@@ -1203,7 +1316,11 @@ public sealed class CasualPartyRegressionTests
         block.Initialize(single, 0, Color.red);
         var cells = Cells(GridManager_2D.Instance);
         for (int c = 0; c < 8; c++) cells[0, c].SetOccupied(Color.red);
-        spawner.BlockPlaced(block.gameObject, new Vector2Int(8, 0), block.GetShape(), Color.red);
+        var observations = new SaveObservation();
+        SaveManager.OnSavedForTests += observations.Saved;
+        try { spawner.BlockPlaced(block.gameObject, new Vector2Int(8, 0), block.GetShape(), Color.red); }
+        finally { SaveManager.OnSavedForTests -= observations.Saved; }
+        Assert.AreEqual(1, observations.BoardWrites, "The last-piece placement saves the resolved next hand exactly once.");
         var saved = SaveManager.LoadData<GridManager_2D.SaveData_2D>("save.json");
         Assert.NotNull(saved.blocks);
         Assert.Greater(saved.blocks.blocks.Count, 0, "A new hand must already be in the save while visuals run.");

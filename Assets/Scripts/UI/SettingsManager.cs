@@ -7,6 +7,8 @@ public class SettingsManager : MonoBehaviour
     public static SettingsManager Instance { get; private set; }
 
     private AudioData settings;
+    private bool settingsDirty;
+    private float saveAfter;
 
     public event Action OnSettingsChanged;
 
@@ -27,42 +29,59 @@ public class SettingsManager : MonoBehaviour
     public bool BgmMute
     {
         get => settings.bgmMute;
-        set { settings.bgmMute = value; SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { if (settings.bgmMute == value) return; settings.bgmMute = value; QueueSave(); }
     }
 
     public bool SfxMute
     {
         get => settings.sfxMute;
-        set { settings.sfxMute = value; SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { if (settings.sfxMute == value) return; settings.sfxMute = value; QueueSave(); }
     }
 
     public bool VibrationMute
     {
         get => settings.vibrationMute;
-        set { settings.vibrationMute = value; SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { if (settings.vibrationMute == value) return; settings.vibrationMute = value; QueueSave(); }
     }
 
     public float BgmVolume
     {
         get => settings.bgmVolume;
-        set { settings.bgmVolume = Mathf.Clamp01(value); SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { value = Mathf.Clamp01(value); if (settings.bgmVolume == value) return; settings.bgmVolume = value; QueueSave(); }
     }
 
     public float SfxVolume
     {
         get => settings.sfxVolume;
-        set { settings.sfxVolume = Mathf.Clamp01(value); SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { value = Mathf.Clamp01(value); if (settings.sfxVolume == value) return; settings.sfxVolume = value; QueueSave(); }
     }
 
     public float VibrationValue
     {
         get => settings.vibrationValue;
-        set { settings.vibrationValue = Mathf.Clamp01(value); SaveSettings(); OnSettingsChanged?.Invoke(); }
+        set { value = Mathf.Clamp01(value); if (settings.vibrationValue == value) return; settings.vibrationValue = value; QueueSave(); }
+    }
+
+    private void QueueSave()
+    {
+        settingsDirty = true;
+        saveAfter = Time.unscaledTime + .25f;
+        OnSettingsChanged?.Invoke();
+    }
+    private void Update() { if (settingsDirty && Time.unscaledTime >= saveAfter) FlushPendingSettings(); }
+    public void FlushPendingSettings() { if (settingsDirty) SaveSettings(); }
+    private void OnApplicationPause(bool paused) { if (paused) FlushPendingSettings(); }
+    private void OnApplicationQuit() => FlushPendingSettings();
+    private void OnDestroy()
+    {
+        if (Instance != this) return;
+        FlushPendingSettings(); Instance = null;
     }
 
     public void SaveSettings()
     {
         SaveManager.SaveData("setting.json", settings);
+        settingsDirty = false;
     }
 
     private void LoadSettings()

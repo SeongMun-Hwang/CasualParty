@@ -19,6 +19,9 @@ public class AdManager : MonoBehaviour
     private readonly AdFrequency frequency = new AdFrequency();
     private InterstitialAd interstitial;
     private BannerView banner;
+    private int bannerWidth;
+    private bool bannerLandscape, bannerFailed;
+    private string bannerUnitId;
     private bool initialized;
     private bool initializing;
     private bool loading;
@@ -99,6 +102,11 @@ public class AdManager : MonoBehaviour
         });
     }
 
+    private void Update()
+    {
+        if (initialized && _enableAds && banner != null && (bannerWidth != Screen.width || bannerLandscape != (Screen.width > Screen.height))) LoadBannerAd();
+    }
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (initialized && _enableAds) StartCoroutine(RefreshBanner());
@@ -113,7 +121,13 @@ public class AdManager : MonoBehaviour
     public void LoadBannerAd()
     {
         if (!initialized || !_enableAds || string.IsNullOrWhiteSpace(_bannerAdUnitId)) return;
+        bool landscape = Screen.width > Screen.height;
+        if (banner != null && !bannerFailed && bannerWidth == Screen.width && bannerLandscape == landscape && bannerUnitId == _bannerAdUnitId)
+        {
+            banner.SetPosition(AdPosition.Bottom); banner.Show(); return;
+        }
         banner?.Destroy();
+        bannerWidth = Screen.width; bannerLandscape = landscape; bannerUnitId = _bannerAdUnitId; bannerFailed = false;
         var size = AdSize.GetPortraitAnchoredAdaptiveBannerAdSizeWithWidth(AdSize.FullWidth);
         banner = new BannerView(_bannerAdUnitId, size, AdPosition.Bottom);
         BannerHeightPixels = 0;
@@ -121,7 +135,15 @@ public class AdManager : MonoBehaviour
         banner.OnBannerAdLoaded += () =>
         {
             if (this != null && banner == requestedBanner)
+            {
+                bannerFailed = false;
                 BannerHeightPixels = Mathf.Max(0, requestedBanner.GetHeightInPixels());
+                if (!_enableAds) requestedBanner.Hide();
+            }
+        };
+        banner.OnBannerAdLoadFailed += error =>
+        {
+            if (this != null && banner == requestedBanner) bannerFailed = true;
         };
         banner.LoadAd(new AdRequest());
     }

@@ -7,6 +7,7 @@ public static class SaveManager
 #if UNITY_EDITOR
     // Allows automated tests to use an isolated directory without touching player saves.
     public static string TestDataDirectory;
+    public static Action<string> OnSavedForTests;
 #endif
     public static string DataDirectory
     {
@@ -27,6 +28,9 @@ public static class SaveManager
             File.WriteAllText(temporary, JsonUtility.ToJson(data));
             if (File.Exists(path)) File.Replace(temporary, path, null);
             else File.Move(temporary, path);
+#if UNITY_EDITOR
+            OnSavedForTests?.Invoke(fileName);
+#endif
         }
         catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
         {

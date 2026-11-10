@@ -74,22 +74,18 @@ public class BlockSpawner_2D : MonoBehaviour
         {
             if (!isActive) return null;
 
-            List<BlockArray> activeOptions = new List<BlockArray>();
+            int count = mainBlock != null && mainBlock.isActive && mainBlock.block != null ? 1 : 0;
+            if (variants != null) foreach (var variant in variants)
+                if (variant != null && variant.isActive && variant.block != null) count++;
+            if (count == 0) return null;
+            int choice = Random.Range(0, count);
             if (mainBlock != null && mainBlock.isActive && mainBlock.block != null)
-                activeOptions.Add(mainBlock.block);
-
-            if (variants != null)
             {
-                foreach (var variant in variants)
-                {
-                    if (variant != null && variant.isActive && variant.block != null)
-                        activeOptions.Add(variant.block);
-                }
+                if (choice-- == 0) return mainBlock.block;
             }
-
-            if (activeOptions.Count == 0) return null;
-
-            return activeOptions[Random.Range(0, activeOptions.Count)];
+            if (variants != null) foreach (var variant in variants)
+                if (variant != null && variant.isActive && variant.block != null && choice-- == 0) return variant.block;
+            return null;
         }
     }
 
@@ -138,7 +134,7 @@ public class BlockSpawner_2D : MonoBehaviour
         else Destroy(gameObject);
     }
 
-    public void SpawnBlocks()
+    public void SpawnBlocks(bool saveAfterSpawn = true)
     {
         // 1. Clear existing blocks
         ClearSpawnedBlocks();
@@ -165,7 +161,7 @@ public class BlockSpawner_2D : MonoBehaviour
             spawnedBlocks.Add(blockGO);
         }
 
-        if (GameManager_2D.Instance != null)
+        if (saveAfterSpawn && GameManager_2D.Instance != null)
             GameManager_2D.Instance.SaveGameData();
     }
 
@@ -195,48 +191,45 @@ public class BlockSpawner_2D : MonoBehaviour
             return pendingSet;
         }
 
+        var groupIndexes = new List<int>(activeGroupIndexes.Count);
+        var colorIndexes = new List<int>(availableColors.Count);
+        var placementCache = new Dictionary<BlockArray, sbyte[]>();
+        if (availableColors.Count == 0) return pendingSet;
         while (!isPlaceableSetFound && maxAttempts-- > 0)
         {
             pendingSet.Clear();
-            
-            // Pick unique groups from active ones
-            var selectedGroupIndexes = activeGroupIndexes
-                .OrderBy(x => Random.value)
-                .Take(spawnPositions.Count)
-                .ToList();
-
-            // Prepare colors
-            var chosenColors = availableColors
-                .OrderBy(x => Random.value)
-                .Take(spawnPositions.Count)
-                .Select(hsv => hsv.ToColor())
-                .ToList();
-
-            for (int i = 0; i < selectedGroupIndexes.Count; i++)
+            groupIndexes.Clear(); groupIndexes.AddRange(activeGroupIndexes);
+            colorIndexes.Clear();
+            for (int i = 0; i < availableColors.Count; i++) colorIndexes.Add(i);
+            int count = Mathf.Min(spawnPositions.Count, groupIndexes.Count, colorIndexes.Count);
+            ShuffleFirst(groupIndexes, count); ShuffleFirst(colorIndexes, count);
+            for (int i = 0; i < count; i++)
             {
-                BlockArray actualBlock = blockGroups[selectedGroupIndexes[i]].GetRandomBlock();
+                var actualBlock = blockGroups[groupIndexes[i]].GetRandomBlock();
                 if (actualBlock == null) continue;
-
-                pendingSet.Add(new PendingBlockData 
-                { 
-                    blockArray = actualBlock, 
-                    rotation = Random.Range(0, 4), 
-                    color = chosenColors[i] 
-                });
+                pendingSet.Add(new PendingBlockData { blockArray = actualBlock, rotation = Random.Range(0, 4), color = availableColors[colorIndexes[i]].ToColor() });
             }
-
-            // Validation check (without instantiation)
             foreach (var pending in pendingSet)
             {
-                List<Vector2Int> shape = pending.blockArray.GetShape(pending.rotation);
-                if (GameManager_2D.Instance.gridManager.IsValidPlacementForAll(shape)) // Optimized check
+                if (!placementCache.TryGetValue(pending.blockArray, out var rotations))
                 {
-                    isPlaceableSetFound = true;
-                    break;
+                    rotations = new sbyte[4]; placementCache.Add(pending.blockArray, rotations);
                 }
+                if (rotations[pending.rotation] == 0)
+                    rotations[pending.rotation] = (sbyte)(GameManager_2D.Instance.gridManager.IsValidPlacementForAll(pending.blockArray.GetShape(pending.rotation)) ? 1 : -1);
+                if (rotations[pending.rotation] == 1) { isPlaceableSetFound = true; break; }
             }
         }
         return pendingSet;
+    }
+
+    private static void ShuffleFirst(List<int> values, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            int other = Random.Range(i, values.Count);
+            int value = values[i]; values[i] = values[other]; values[other] = value;
+        }
     }
 
     private void ClearSpawnedBlocks()
@@ -294,7 +287,7 @@ public class BlockSpawner_2D : MonoBehaviour
         // Resolve the next hand before saving, even while the clear visuals are playing.
         if (spawnedBlocks.Count == 0)
         {
-            SpawnBlocks();
+            SpawnBlocks(false);
         }
 
         if (GameManager_2D.Instance != null)
