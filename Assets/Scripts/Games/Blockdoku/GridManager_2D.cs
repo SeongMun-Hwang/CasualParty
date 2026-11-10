@@ -393,7 +393,6 @@ public class GridManager_2D : MonoBehaviour
     public void PlayFullClearAnimation(List<Color> sourceColors = null)
     {
         if (symmetryEffectPrefab == null || symmetryEffectContainer == null) return;
-        if (GameManager_2D.Instance != null && GameManager_2D.Instance.uiManager != null) GameManager_2D.Instance.uiManager.Vibrate();
         ShakeGrid((GameManager_2D.Instance != null ? GameManager_2D.Instance.combo : 0) + 5);
 
         List<Color> colors = GetRandomActiveColors(2);
@@ -421,7 +420,6 @@ public class GridManager_2D : MonoBehaviour
     public void PlaySymmetryAnimation(string type)
     {
         if (symmetryEffectPrefab == null || symmetryEffectContainer == null) return;
-        if (GameManager_2D.Instance != null && GameManager_2D.Instance.uiManager != null) GameManager_2D.Instance.uiManager.Vibrate();
         var colors = GetRandomActiveColors(2);
         bool isReverse = Random.value > 0.5f;
         Vector3[] p1, p2;

@@ -18,7 +18,7 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
     [SerializeField] private float dragScale = 1.2f;
     [SerializeField] private float dragYOffset = 150.0f; // Offset in pixels/units to move block above finger
 
-    private Vector2 originalScale;
+    private Vector3 originalScale;
     private Vector3 grabWorldSpaceOffset;
     private List<Vector2Int> shape;
     private RectTransform rectTransform;
@@ -30,6 +30,8 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
     public int CurrentRotationStep { get { return currentRotationStep; } } // Public getter
     public Transform SpawnParent { get; private set; }
     private bool isDragging;
+    private bool restorePending;
+    public bool IsDragging => isDragging;
 
     private readonly List<Transform> childCubes = new List<Transform>();
     private Vector2 anchorOffsetPixels;
@@ -52,6 +54,9 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
 
         shape = blockData.GetShape(rotationCount);
         UpdateVisuals();
+        RefreshSpawnScale();
+        if (SpawnParent.GetComponent<BlockdokuHandSlot>() != null)
+            foreach (var graphic in GetComponentsInChildren<Graphic>()) graphic.raycastTarget = false;
         SetColor(blockColor);
     }
 
@@ -124,6 +129,23 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
     public List<Vector2Int> GetShape()
     {
         return shape;
+    }
+
+    public void RefreshSpawnScale()
+    {
+        if (!(SpawnParent is RectTransform slot) || shape == null || shape.Count == 0 || GridManager_2D.Instance == null) return;
+        var hand = slot.GetComponentInParent<BlockdokuHandPanel>();
+        if (hand == null) return;
+        CancelDrag();
+        var pitch = GridManager_2D.Instance.GetCellPitch();
+        var size = GridManager_2D.Instance.GetCellSize();
+        float width = (shape.Max(p => p.x) - shape.Min(p => p.x)) * pitch.x + size.x;
+        float height = (shape.Max(p => p.y) - shape.Min(p => p.y)) * pitch.y + size.y;
+        float scale = Mathf.Min(hand.GetCommonPreviewScale(size, pitch),
+            Mathf.Max(1, slot.rect.width - 16) / width, Mathf.Max(1, slot.rect.height - 16) / height);
+        originalScale = Vector3.one * scale;
+        rectTransform.localScale = Vector3.one * scale;
+        rectTransform.anchoredPosition = Vector2.zero;
     }
 
     /// <summary>
@@ -234,15 +256,34 @@ public class Block_2D : MonoBehaviour, IPointerDownHandler, IDragHandler, IPoint
         if (!focused) CancelDrag();
     }
 
-    private void OnDisable() => CancelDrag();
+    private void OnDisable() => CancelDrag(true);
+    private void OnEnable() { if (restorePending) StartCoroutine(RestoreAfterDisable()); }
 
-    private void CancelDrag()
+    public void CancelDrag(bool deferRestore = false)
     {
         if (!isDragging) return;
         isDragging = false;
         if (BlockSpawner_2D.Instance != null) BlockSpawner_2D.Instance.EndDrag(this);
         if (GridManager_2D.Instance != null) GridManager_2D.Instance.ClearPreview();
         if (originalParent == null) return;
+        if (deferRestore)
+        {
+            restorePending = true;
+            if (isActiveAndEnabled) StartCoroutine(RestoreAfterDisable());
+            return;
+        }
+        RestoreDragPosition();
+    }
+
+    private System.Collections.IEnumerator RestoreAfterDisable()
+    {
+        yield return null; // Unity disallows reparenting into a hierarchy while it is deactivating.
+        if (originalParent != null) RestoreDragPosition();
+    }
+
+    private void RestoreDragPosition()
+    {
+        restorePending = false;
         transform.SetParent(originalParent, false);
         rectTransform.localScale = (Vector3)originalScale;
         rectTransform.anchoredPosition = originalPosition;

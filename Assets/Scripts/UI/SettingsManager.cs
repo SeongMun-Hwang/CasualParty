@@ -85,6 +85,39 @@ public class SettingsManager : MonoBehaviour
         }
     }
 
+    public static int GetPlacementHapticAmplitude(int combo, float volume)
+    {
+        if (volume <= 0) return 0;
+        return Mathf.Clamp(Mathf.RoundToInt((40 + Mathf.Clamp(combo, 0, 8) * 15) * Mathf.Clamp01(volume)), 1, 160);
+    }
+
+    public void VibrateBlockPlacement(int combo)
+    {
+        if (settings.vibrationMute) return;
+        int amplitude = GetPlacementHapticAmplitude(combo, settings.vibrationValue);
+        if (amplitude == 0) return;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        try
+        {
+            using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
+            using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
+            {
+                if (activity == null || version.GetStatic<int>("SDK_INT") < 26) { VibrateShort(); return; }
+                using (var vibrator = activity.Call<AndroidJavaObject>("getSystemService", "vibrator"))
+                {
+                    if (vibrator == null || !vibrator.Call<bool>("hasVibrator")) return;
+                    if (!vibrator.Call<bool>("hasAmplitudeControl")) { VibrateShort(); return; }
+                    using (var effects = new AndroidJavaClass("android.os.VibrationEffect"))
+                    using (var effect = effects.CallStatic<AndroidJavaObject>("createOneShot", 18L, amplitude))
+                        vibrator.Call("vibrate", effect);
+                }
+            }
+        }
+        catch (AndroidJavaException e) { Debug.LogWarning("Placement haptic unavailable: " + e.Message); VibrateShort(); }
+#endif
+    }
+
     public void VibrateShort()
     {
         if (settings.vibrationMute || settings.vibrationValue <= 0) return;

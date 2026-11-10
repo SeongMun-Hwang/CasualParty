@@ -16,6 +16,166 @@ public sealed class CasualPartyRegressionTests
     private int boundaryCount;
     private Action pendingBoundary;
 
+    [TestCase(0, 1f, 40)]
+    [TestCase(1, 1f, 55)]
+    [TestCase(4, 1f, 100)]
+    [TestCase(99, 1f, 160)]
+    [TestCase(0, .5f, 20)]
+    [TestCase(8, 0f, 0)]
+    public void PlacementHapticScalesWithComboAndRespectsVolume(int combo, float volume, int expected)
+    {
+        Assert.AreEqual(expected, SettingsManager.GetPlacementHapticAmplitude(combo, volume));
+    }
+
+    [UnityTest]
+    public IEnumerator GameOverPanelsShowOneHeadingAndMinesweeperCanStillShowWin()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        foreach (var name in new[] { "Blockdoku_2D", "10SUM", "MineSweeper" })
+        {
+            var load = SceneManager.LoadSceneAsync(name); while (!load.isDone) yield return null;
+            yield return null;
+            GameObject panel;
+            if (name == "Blockdoku_2D")
+            {
+                var ui = UnityEngine.Object.FindFirstObjectByType<UIManager_2D>(); ui.ShowGameOverPanel(true, 123); panel = ui.gameOverPanel;
+                Assert.AreEqual("Score: 123", ui.finalScoreText.text);
+            }
+            else if (name == "10SUM")
+            {
+                var ui = UnityEngine.Object.FindFirstObjectByType<UIManager>(); ui.ShowGameOverPanel(true, 123); panel = ui.gameOverPanel;
+            }
+            else
+            {
+                var ui = UnityEngine.Object.FindFirstObjectByType<MineSweeper_UIManager>();
+                ui.ShowGameOverPanel(true, true, 42, 42); Assert.AreEqual("YOU WIN!", ui.resultText.text);
+                Assert.True(ui.resultText.gameObject.activeInHierarchy);
+                ui.ShowGameOverPanel(true, false, 42, 42); Assert.AreEqual("GAME OVER", ui.resultText.text); panel = ui.gameOverPanel;
+            }
+            Assert.AreEqual(1, panel.GetComponentsInChildren<TMPro.TextMeshProUGUI>()
+                .Count(t => t.name == "GameOverTmp" || t.name == "ResultTmp" || t.name == "Theme Heading"));
+        }
+        yield return new ExitPlayMode();
+    }
+
+    [TestCase(720, 150)]
+    [TestCase(1080, 240)]
+    [TestCase(1440, 360)]
+    public void BlockdokuHandKeepsItsReservedSpaceWhenBannerLoadsOrReloads(int width, int loadedHeight)
+    {
+        float initial = BlockdokuHandPanel.GetReservedBannerHeight(width, 0);
+        Assert.AreEqual(initial, BlockdokuHandPanel.GetReservedBannerHeight(width, loadedHeight));
+        Assert.AreEqual(initial, BlockdokuHandPanel.GetReservedBannerHeight(width, 0));
+        Assert.GreaterOrEqual(initial, loadedHeight);
+        Assert.AreEqual(initial + 20, BlockdokuHandPanel.GetReservedBannerHeight(width, initial + 20));
+    }
+
+    [TestCase(720, 1280, 200, 24)]
+    [TestCase(1080, 2400, 270, 80)]
+    [TestCase(1440, 3200, 360, 100)]
+    public void BlockdokuHandFillsAvailableSpaceBetweenBoardSafeAreaAndBanner(int width, int height, int banner, int inset)
+    {
+        var viewport = new Rect(0, 0, width, height);
+        var safe = new Rect(inset, inset, width - 2 * inset, height - 2 * inset);
+        float boardBottom = height * .4f;
+        var bounds = BlockdokuHandPanel.GetAvailableRect(viewport, safe, boardBottom, banner, 1);
+        Assert.AreEqual(safe.xMin + 12, bounds.xMin);
+        Assert.AreEqual(safe.xMax - 12, bounds.xMax);
+        Assert.AreEqual(Mathf.Max(banner, inset) + 12, bounds.yMin);
+        Assert.AreEqual(boardBottom - 12, bounds.yMax, .01f);
+    }
+
+    [UnityTest]
+    public IEnumerator BlockdokuHandKeepsLongPiecesInsideTheirSlotsAndRestoresAfterDrag()
+    {
+        yield return new EnterPlayMode();
+        UseIsolatedSaves();
+        var load = LoadBlockdoku();
+        while (load.MoveNext()) yield return load.Current;
+        yield return null;
+        var hand = UnityEngine.Object.FindFirstObjectByType<BlockdokuHandPanel>();
+        Assert.NotNull(hand); Assert.AreEqual(3, hand.slots.Length);
+        // The batch editor's default Game view can be landscape. Exercise the supported phone viewport.
+        var camera = Camera.main;
+        var phoneViewport = new RenderTexture(1080, 1920, 24);
+        camera.targetTexture = phoneViewport;
+        foreach (var canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+            if (canvas.isRootCanvas) { canvas.renderMode = RenderMode.ScreenSpaceCamera; canvas.worldCamera = camera; canvas.planeDistance = 1; }
+        Canvas.ForceUpdateCanvases(); hand.Refresh(); Canvas.ForceUpdateCanvases();
+        var background = hand.GetComponent<UnityEngine.UI.Image>();
+        Assert.Greater(background.color.a, 0); Assert.Less(background.color.a, 1);
+        Assert.False(background.raycastTarget);
+        var grid = GridManager_2D.Instance;
+        var piece = BlockSpawner_2D.Instance.GetSpawnedBlocks()[0].GetComponent<Block_2D>();
+        var slot = (RectTransform)piece.SpawnParent;
+        var longShape = ScriptableObject.CreateInstance<BlockArray>();
+        longShape.shapeRows = new System.Collections.Generic.List<string> { "11111" };
+        for (int rotation = 0; rotation < 2; rotation++)
+        {
+            piece.Initialize(longShape, rotation, Color.red);
+            yield return null;
+            var shape = piece.GetShape();
+            float width = (shape.Max(p => p.x) - shape.Min(p => p.x)) * grid.GetCellPitch().x + grid.GetCellSize().x;
+            float height = (shape.Max(p => p.y) - shape.Min(p => p.y)) * grid.GetCellPitch().y + grid.GetCellSize().y;
+            Assert.LessOrEqual(width * piece.transform.localScale.x, slot.rect.width - 15);
+            Assert.LessOrEqual(height * piece.transform.localScale.y, slot.rect.height - 15);
+            Assert.AreEqual(Mathf.Min(hand.GetCommonPreviewScale(grid.GetCellSize(), grid.GetCellPitch()), (slot.rect.width - 16) / width, (slot.rect.height - 16) / height), piece.transform.localScale.x, .001f);
+            Assert.AreEqual(Vector2.zero, ((RectTransform)piece.transform).anchoredPosition);
+        }
+        var touchTarget = slot.GetComponent<BlockdokuHandSlot>();
+        Assert.NotNull(touchTarget);
+        Assert.True(slot.GetComponent<UnityEngine.UI.Image>().raycastTarget);
+        Assert.True(piece.GetComponentsInChildren<UnityEngine.UI.Graphic>().All(g => !g.raycastTarget));
+        var corner = slot.TransformPoint(new Vector3(slot.rect.xMin + 5, slot.rect.yMax - 5));
+        var slotPointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current)
+            { pointerId = 21, position = RectTransformUtility.WorldToScreenPoint(camera, corner) };
+        var hits = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        UnityEngine.EventSystems.EventSystem.current.RaycastAll(slotPointer, hits);
+        Assert.AreSame(slot.gameObject, hits.First().gameObject, "Empty space in the slot must also pick up its piece.");
+        touchTarget.OnPointerDown(slotPointer);
+        Assert.True(piece.IsDragging);
+        var secondFinger = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { pointerId = 22 };
+        touchTarget.OnPointerUp(secondFinger);
+        Assert.True(piece.IsDragging, "A second finger must not release the first finger's piece.");
+        slotPointer.delta = new Vector2(10, 20); touchTarget.OnDrag(slotPointer);
+        ((RectTransform)piece.transform).anchoredPosition = new Vector2(-5000, -5000);
+        touchTarget.OnPointerUp(slotPointer);
+        Assert.False(piece.IsDragging); Assert.AreSame(slot, piece.transform.parent);
+        touchTarget.OnPointerDown(slotPointer);
+        touchTarget.gameObject.SetActive(false);
+        yield return null;
+        yield return null;
+        Assert.False(piece.IsDragging); Assert.AreSame(slot, piece.transform.parent);
+        touchTarget.gameObject.SetActive(true);
+        var menu = UnityEngine.Object.FindFirstObjectByType<GameMenu>(); menu.Open();
+        touchTarget.OnPointerDown(slotPointer); Assert.False(piece.IsDragging); menu.Close();
+
+        longShape.shapeRows = new System.Collections.Generic.List<string> { "11", "11" };
+        piece.Initialize(longShape, 0, Color.red);
+        float commonScale = piece.transform.localScale.x;
+        longShape.shapeRows = new System.Collections.Generic.List<string> { "111", "111", "111" };
+        piece.Initialize(longShape, 0, Color.red);
+        Assert.AreEqual(commonScale, piece.transform.localScale.x, .001f, "Ordinary shapes must use the same cell size.");
+        var waitingScale = piece.transform.localScale;
+        var pointer = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+        piece.OnPointerDown(pointer);
+        Assert.AreNotSame(slot, piece.transform.parent);
+        ((RectTransform)piece.transform).anchoredPosition = new Vector2(-5000, -5000);
+        piece.OnPointerUp(pointer);
+        Assert.AreSame(slot, piece.transform.parent);
+        Assert.AreEqual(waitingScale, piece.transform.localScale);
+        Assert.AreEqual(Vector2.zero, ((RectTransform)piece.transform).anchoredPosition);
+        piece.OnPointerDown(pointer);
+        hand.previewCellSize = 32; hand.Refresh();
+        Assert.AreSame(slot, piece.transform.parent);
+        Assert.LessOrEqual(piece.transform.localScale.x * grid.GetCellSize().x, 32.01f);
+        Assert.AreEqual(0, GameManager_2D.Instance.GetScore());
+        UnityEngine.Object.Destroy(longShape);
+        camera.targetTexture = null; UnityEngine.Object.Destroy(phoneViewport);
+        yield return new ExitPlayMode();
+    }
+
     private sealed class FakeAuthenticationClient : IPlayGamesAuthenticationClient
     {
         public bool IsAvailable => true;

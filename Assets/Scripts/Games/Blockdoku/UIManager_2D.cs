@@ -142,6 +142,11 @@ public class UIManager_2D : MonoBehaviour
         GameManager_2D.Instance.RestartGame();
     }
 
+    public void VibratePlacement(int combo)
+    {
+        if (SettingsManager.Instance != null) SettingsManager.Instance.VibrateBlockPlacement(combo);
+    }
+
     public void Vibrate()
     {
         if (SettingsManager.Instance != null) SettingsManager.Instance.Vibrate();

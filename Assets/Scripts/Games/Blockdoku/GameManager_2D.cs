@@ -122,7 +122,7 @@ public class GameManager_2D : MonoBehaviour, IGameManager
             int displayCombo = (batchHasClearedAny || batchMessages.Count > 0) ? combo : 0;
             uiManager.ShowFloatingScore(batchScore, displayCombo, combinedMsg);
 
-            uiManager.Vibrate();
+            uiManager.VibratePlacement(displayCombo);
             
             // Only shake the grid if lines were actually cleared
             if (batchHasClearedAny)
@@ -156,7 +156,7 @@ public class GameManager_2D : MonoBehaviour, IGameManager
                 score += total;
                 OnScoreChanged?.Invoke(score);
                 uiManager.ShowFloatingScore(total, (amount > 0) ? combo : 0);
-                uiManager.Vibrate();
+                uiManager.VibratePlacement(combo);
                 
                 // Only shake if lines were cleared (amount > 0)
                 if (amount > 0)
